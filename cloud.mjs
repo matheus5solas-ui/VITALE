@@ -9,6 +9,7 @@ async function api(path,options={}){
  if(!session||session.expires_at<=Date.now()/1000){logout();throw Error('Entre novamente para continuar.');}
  const response=await fetch(SUPABASE_URL+path,{...options,headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',Prefer:'return=representation',...options.headers},signal:AbortSignal.timeout(12000)});
  if(response.status===401){logout();throw Error('Sua sessão expirou. Entre novamente.');}
+ if(!response.ok&&path.startsWith('/functions/')){const error=await response.json().catch(()=>({}));throw Error(error.message||'Não foi possível concluir esta operação.');}
  if(!response.ok)throw Error(response.status===403?'Seu perfil não permite esta ação.':response.status===409?'Já existe um registro com esses dados.':'Não foi possível salvar ou carregar. Tente novamente.');
  return response.status===204?null:response.json();
 }
@@ -24,7 +25,7 @@ $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textConte
  applyRoles();await reload();$('loginMessage').textContent='';
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
-async function allRows(table,order=""){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=*&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
+async function allRows(table,order="",select="*"){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=${select}&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
 async function reload(){const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));}
 const name=id=>data.students.find(s=>s.id===id)?.name||'Aluno';
 function render(){
