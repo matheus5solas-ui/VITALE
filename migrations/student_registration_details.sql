@@ -1,0 +1,1 @@
+alter table public.students add column birth_date date check (birth_date between date '1900-01-01' and current_date), add column address text check(length(address)<=1500), add column health_conditions text check(length(health_conditions)<=4000), add column pilates_reason text check(length(pilates_reason)<=2000);
