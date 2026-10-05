@@ -17,14 +17,15 @@ $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textConte
  const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim(),password}),signal:AbortSignal.timeout(12000)});
  if(!r.ok)throw Error('Não foi possível entrar. Confira seu e-mail e senha.');
  const result=await r.json();session={...result,expires_at:Date.now()/1000+result.expires_in};$('password').value='';
- const rows=await api('/rest/v1/staff?select=user_id,name,role,active');staff=rows[0];
+ const rows=await api('/rest/v1/staff?select=user_id,name,role,active');staff=rows.find(x=>x.user_id===session.user.id);
  if(!staff?.active){logout();throw Error('Seu acesso à clínica ainda não foi habilitado.');}
  $('loginPanel').classList.add('hidden');$('workspace').classList.remove('hidden');$('identity').textContent=staff.name+' · '+({admin:'Administrador',reception:'Recepção',professional:'Profissional'}[staff.role]);
  $('newStudent').classList.toggle('hidden',staff.role==='professional');$('newAppointment').classList.toggle('hidden',staff.role==='professional');
- await reload();$('loginMessage').textContent='';
+ applyRoles();await reload();$('loginMessage').textContent='';
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
-async function reload(){const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>api(`/rest/v1/${t}?select=*&limit=1000`)));['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();}
+async function allRows(table,order=""){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=*&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
+async function reload(){const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));}
 const name=id=>data.students.find(s=>s.id===id)?.name||'Aluno';
 function render(){
  $('countStudents').textContent=data.students.length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
@@ -34,7 +35,7 @@ function render(){
  $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','students','attendance','face'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view));$('title').textContent=b.textContent;});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>$('studentDialog').showModal();
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
@@ -43,3 +44,10 @@ $('appointmentForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fr
 document.addEventListener('click',async e=>{const id=e.target.dataset.present;if(!id)return;const a=data.appointments.find(a=>a.id===id);e.target.disabled=true;try{await api('/rest/v1/attendance',{method:'POST',body:JSON.stringify({student_id:a.student_id,appointment_id:a.id,occurred_at:new Date().toISOString(),source:'manual',recorded_by:staff.user_id})});await reload();notify('Presença confirmada.');}catch(err){notify(err.message);}finally{e.target.disabled=false;}});
 $('date').onchange=render;$('search').oninput=render;$('refresh').onclick=()=>reload().catch(e=>notify(e.message));
 logout();
+
+function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.classList.toggle('hidden',!el.dataset.roles.split(',').includes(staff?.role)));document.querySelector('[data-view=agenda]').click();}
+export {api,esc,day,today,notify,reload,allRows};
+export const currentStaff=()=>staff;
+export const currentData=()=>data;
+import('./management.mjs');
+window.addEventListener('vitale:team',()=>reload().catch(e=>notify(e.message)));
