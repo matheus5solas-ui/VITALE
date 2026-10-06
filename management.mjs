@@ -1,6 +1,7 @@
 import {SUPABASE_URL,SUPABASE_KEY} from './config.mjs';
 import {api,esc,today,notify,allRows,currentStaff,currentData} from './cloud.mjs';
 const $=id=>document.getElementById(id),money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const sendingInvites=new Set();
 let rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]},kind='income',loadVersion=0;
 $('financeMonth').value=today.slice(0,7);
 async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!role){rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};return;}
@@ -29,12 +30,12 @@ submit($('partnerForm'),d=>api('/rest/v1/partner_connections?on_conflict=partner
 if(currentStaff())load();
 
 function renderTeam(){
-$('teamRows').innerHTML=rows.team_members.map(r=>{const expires=r.invite_expires_at&&new Date(r.invite_expires_at),status=r.user_id?'Habilitado':!expires?'Convite não enviado':expires<=new Date()?'Expirado · reenviar':`Convite enviado · válido até ${expires.toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;return `<tr><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${esc(status)}</td><td><button data-edit-team="${r.id}">Editar</button> ${r.user_id?'':`<button data-send-team="${r.id}">${r.invited_at?'Reenviar':'Enviar convite'}</button>`}</td></tr>`;}).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
+$('teamRows').innerHTML=rows.team_members.map(r=>{const expires=r.invite_expires_at&&new Date(r.invite_expires_at),status=r.user_id?'Habilitado':!expires?'Convite não enviado':expires<=new Date()?'Expirado · reenviar':`Convite enviado · válido até ${expires.toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;return `<tr><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${esc(status)}</td><td><button data-edit-team="${r.id}" ${sendingInvites.has(r.id)?'disabled':''}>Editar</button> ${r.user_id?'':`<button data-send-team="${r.id}" ${sendingInvites.has(r.id)?'disabled aria-busy="true"':''}>${sendingInvites.has(r.id)?'Enviando…':r.invited_at?'Reenviar':'Enviar convite'}</button>`}</td></tr>`;}).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
 }
 setInterval(()=>{if(currentStaff()?.role==='admin')renderTeam();},30000);
 document.addEventListener('click',async e=>{
 const edit=e.target.closest('[data-edit-team]');if(edit){const row=rows.team_members.find(r=>r.id===edit.dataset.editTeam);if(!row)return;const form=$('teamForm');form.reset();for(const field of ['id','name','email','role','registration'])form.elements[field].value=row[field]||'';form.elements.email.readOnly=!!row.user_id;$('teamDialog').showModal();return;}
-const send=e.target.closest('[data-send-team]');if(!send)return;send.disabled=true;try{const r=await api('/functions/v1/team-invite',{method:'POST',body:JSON.stringify({action:'send',id:send.dataset.sendTeam})});notify(r.message);await load();}catch(err){notify(err.message);await load();}finally{send.disabled=false;}
+const send=e.target.closest('[data-send-team]');if(!send)return;const id=send.dataset.sendTeam;if(sendingInvites.has(id))return;sendingInvites.add(id);renderTeam();notify('Enviando convite… Aguarde a confirmação.');try{const r=await api('/functions/v1/team-invite',{method:'POST',body:JSON.stringify({action:'send',id})});notify(r.message);await load();}catch(err){notify(err.name==='TimeoutError'?'O envio demorou além do esperado. Confira o status antes de tentar novamente.':err instanceof TypeError?'Não foi possível conectar ao serviço de envio. Tente novamente.':err.message);await load();}finally{sendingInvites.delete(id);renderTeam();}
 });
 const url=new URL(location.href),inviteToken=url.searchParams.get('invite');
 if(inviteToken){
