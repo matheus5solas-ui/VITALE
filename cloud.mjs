@@ -54,7 +54,7 @@ function render(){
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
  $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view));$('title').textContent=b.textContent;});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>{openStudent();};
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
