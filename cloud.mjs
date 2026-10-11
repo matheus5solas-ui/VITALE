@@ -36,8 +36,8 @@ async function api(path,options={},retry=true){
 }
 function logout(){try{sessionStorage.removeItem(sessionKey);}catch{}session=null;staff=null;data={students:[],appointments:[],attendance:[],professionals:[]};$('loginPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('password').value='';$('studentForm').reset();$('appointmentForm').reset();document.querySelectorAll('dialog[open]').forEach(d=>d.close());render();}
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textContent='Entrando…';const password=$('password').value;try{
- const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim(),password}),signal:AbortSignal.timeout(12000)});
- if(!r.ok)throw Error('Não foi possível entrar. Confira seu e-mail e senha.');
+ const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim().includes('@')?$('email').value.trim():$('email').value.trim().toLowerCase()+'@login.vitale.invalid',password}),signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('Não foi possível entrar. Confira seu usuário e senha.');
  const result=await r.json();saveSession(result);$('password').value='';await enterWorkspace();$('loginMessage').textContent='';
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
