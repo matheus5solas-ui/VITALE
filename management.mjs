@@ -27,6 +27,7 @@ submit($('ledgerForm'),d=>api('/rest/v1/ledger',{method:'POST',body:JSON.stringi
 submit($('teamForm'),async d=>{
  const existing=rows.team_members.find(r=>r.id===d.id);
  const id=await api('/rest/v1/rpc/edit_team',{method:'POST',body:JSON.stringify({p_id:d.id||null,p_name:d.name,p_email:existing?.email||crypto.randomUUID()+'@login.vitale.invalid',p_role:d.role,p_registration:d.registration||null})});
+ $('teamForm').elements.id.value=id;await load();
  if(d.password){const r=await api('/functions/v1/team-access',{method:'POST',body:JSON.stringify({id,username:d.username,password:d.password})});notify(r.message);}
  window.dispatchEvent(new Event('vitale:team'));
 },'teamDialog','Cadastro salvo. Confira o usuário e a situação do acesso.');
