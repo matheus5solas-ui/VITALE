@@ -34,7 +34,7 @@ async function api(path,options={},retry=true){
  if(!response.ok)throw Error(response.status===403?'Seu perfil não permite esta ação.':response.status===409?'Já existe um registro com esses dados.':'Não foi possível salvar ou carregar. Tente novamente.');
  return response.status===204?null:response.json();
 }
-function logout(){try{sessionStorage.removeItem(sessionKey);}catch{}session=null;staff=null;data={students:[],appointments:[],attendance:[],professionals:[]};$('loginPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('password').value='';$('studentForm').reset();$('appointmentForm').reset();document.querySelectorAll('dialog[open]').forEach(d=>d.close());render();}
+function logout(){try{sessionStorage.removeItem(sessionKey);}catch{}session=null;staff=null;data={students:[],appointments:[],attendance:[],professionals:[]};facialRoster=null;facialRosterError=null;$('loginPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('password').value='';$('studentForm').reset();$('appointmentForm').reset();document.querySelectorAll('dialog[open]').forEach(d=>d.close());render();}
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textContent='Entrando…';const password=$('password').value;try{
  const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim().includes('@')?$('email').value.trim():$('email').value.trim().toLowerCase()+'@login.vitale.invalid',password}),signal:AbortSignal.timeout(12000)});
  if(!r.ok)throw Error('Não foi possível entrar. Confira seu usuário e senha.');
@@ -42,8 +42,33 @@ $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textConte
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
 async function allRows(table,order="",select="*"){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=${select}&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
-async function reload(){const userId=session?.user.id;const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));}
+async function reload(){const userId=session?.user.id;const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));if(['admin','reception'].includes(staff?.role))loadFacialRoster();}
 const name=id=>data.students.find(s=>s.id===id)?.name||'Aluno';
+let facialRoster=null,facialRosterError=null,facialLoading=false;
+async function loadFacialRoster(){
+ if(!session||!staff||!['admin','reception'].includes(staff.role))return;
+ facialLoading=true;renderFacialRoster();
+ try{
+  const rows=await api('/rest/v1/rpc/vitale_facial_roster',{method:'POST',body:'{}'});
+  facialRoster=Array.isArray(rows)?rows:[];facialRosterError=null;
+ }catch(error){facialRoster=null;facialRosterError=error.message||'Falha ao consultar os vínculos.';}
+ finally{facialLoading=false;renderFacialRoster();}
+}
+function renderFacialRoster(){
+ const pro=$('faceProfessionalRows'),stu=$('faceStudentRows');if(!pro||!stu)return;
+ const linked=facialRoster||[];
+ const byStudent=new Map(linked.filter(r=>r.student_id).map(r=>[r.student_id,r]));
+ const professionals=data.professionals.filter(p=>p.active);
+ const linkedStudents=data.students.filter(s=>byStudent.has(s.id));
+ $('faceProfessionalCount').textContent=professionals.length;
+ $('faceStudentCount').textContent=linkedStudents.length;
+ const person=(person,extra,status)=>`<div class="facial-person"><strong>${esc(person.name)}</strong><small>${esc(extra)}</small><span class="facial-pill">${esc(status)}</span></div>`;
+ pro.innerHTML=professionals.map(p=>person(p,'ID facial: não vinculado','Cadastro facial não confirmado')).join('')||'<p class="empty">Nenhum profissional ativo.</p>';
+ stu.innerHTML=linkedStudents.map(s=>{const b=byStudent.get(s.id);return person(s,`ID Control iD: ${b.user_id} · Aparelho: ${b.device_name||'Cadastrado'}`,b.active?'Vínculo ativo · biometria não verificada':'Vínculo inativo');}).join('')||(facialLoading?'<p class="empty">Consultando vínculos…</p>':'<p class="empty">Nenhum aluno com vínculo facial disponível.</p>');
+ $('faceStatus').textContent=facialLoading?'Atualizando vínculos…':facialRosterError?'Não foi possível consultar os vínculos faciais: '+facialRosterError:'Os vínculos exibidos vêm do Supabase. A lista não verifica a biometria armazenada no Control iD em tempo real.';
+}
+$('refreshFace').onclick=()=>loadFacialRoster();
+
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
  $('countStudents').textContent=data.students.length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
@@ -52,7 +77,7 @@ function render(){
  $('attendanceRows').innerHTML=[...data.attendance].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map(a=>`<tr><td>${esc(name(a.student_id))}</td><td>${new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})}</td><td>${a.source==='facial'?'Facial':'Manual'}</td><td>${a.appointment_id?'Aula vinculada':'Conferir'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nenhuma presença.</td></tr>';
  $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
- $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();
+ $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();renderFacialRoster();
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
