@@ -66,5 +66,8 @@ END $$;
 
 REVOKE ALL ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid) TO authenticated;
--- Impede bypass pelo REST; todo lancamento manual passara pela RPC.
-DROP POLICY IF EXISTS attendance_manual ON public.attendance;
+-- ATENCAO: a politica de INSERT atual continua ativa ate migrarmos TODOS os fluxos
+-- de presenca manual (inclusive o botao da agenda) para esta RPC.
+-- Nao remover a politica neste arquivo de preparacao.
+-- PENDENCIA: fazer a facial usar a mesma validacao atomica de saldo e duplicidade.
+
