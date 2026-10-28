@@ -136,7 +136,7 @@ function renderClasses(){
  const nowFortaleza=day(new Date()), weekStart=new Date(nowFortaleza+'T12:00:00-03:00');
  weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));
  const startOfWeek=day(weekStart);
- const weekCount=attendance.filter(t=>day(t.occurred_at)>=startOfWeek&&day(t.occurred_at)<=nowFortaleza).length;
+ const weekCount=new Set(attendance.filter(t=>day(t.occurred_at)>=startOfWeek&&day(t.occurred_at)<=nowFortaleza).map(t=>day(t.occurred_at))).size;
  const total=s.pilates_plan==='test_2'?2:(weeklyLimit||appointments.length), exhausted=s.pilates_plan==='test_2'&&used>=total;
  const displayUsed=s.pilates_plan==='test_2'?used:(weeklyLimit?weekCount:used);
  const dots=Array.from({length:total},(_,i)=>'<span aria-label="Aula '+(i+1)+': '+(exhausted?'pacote esgotado':i<displayUsed?'presença confirmada':'disponível')+'" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:'+(exhausted?'#b42318':i<displayUsed?'#237b50':'#e0e5e3')+';color:'+(i<displayUsed||exhausted?'white':'#344840')+'">'+(i+1)+'</span>').join('');
