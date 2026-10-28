@@ -125,7 +125,7 @@ function showStudentInfo(student){
 }
 document.addEventListener('click',e=>{const button=e.target.closest('[data-view-student]');if(!button)return;const student=data.students.find(s=>s.id===button.dataset.viewStudent);if(student)showStudentInfo(student);});
 
-function classAttendance(student,current=true){return data.attendance.filter(t=>t.student_id===student.id&&(t.appointment_id||student.pilates_plan==='test_2')&&(!current||student.pilates_plan!=='test_2'||t.occurred_at>=student.test_plan_started_at));}
+function classAttendance(student,current=true){return data.attendance.filter(t=>t.student_id===student.id&&(!current||student.pilates_plan!=='test_2'||!student.test_plan_started_at||t.occurred_at>=student.test_plan_started_at));}
 function teacher(a){return data.professionals.find(p=>p.user_id===a?.professional_id)?.name||'Professor não informado';}
 function classAppointments(student){return data.appointments.filter(a=>a.student_id===student.id&&a.activity==='Pilates'&&a.status!=='cancelled'&&(student.pilates_plan==='test_2'?a.ends_at>=student.test_plan_started_at:day(a.starts_at).slice(0,7)===day(new Date()).slice(0,7))).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));}
 function renderClasses(){
