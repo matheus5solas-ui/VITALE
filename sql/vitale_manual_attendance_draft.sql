@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION public.vitale_manual_pilates_attendance(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
- v_actor uuid := auth.uid();
+ v_actor uuid := (select auth.uid());
  v_role text;
  v_plan text;
  v_start timestamptz;
@@ -23,7 +23,7 @@ BEGIN
  IF v_actor IS NULL OR v_role NOT IN ('admin','reception') THEN
    RAISE EXCEPTION 'Sem permissao para registrar presenca manual';
  END IF;
- IF length(trim(coalesce(p_reason,''))) < 5 OR length(p_reason)>500 THEN
+ IF length(trim(coalesce(p_reason,''))) < 5 OR length(coalesce(p_reason,''))>500 THEN
    RAISE EXCEPTION 'Informe um motivo de 5 a 500 caracteres';
  END IF;
  SELECT pilates_plan,test_plan_started_at INTO v_plan,v_start
@@ -41,14 +41,15 @@ BEGIN
    RETURN jsonb_build_object('duplicate',true,'reason','same_day','message','Presenca ja registrada');
  END IF;
  IF v_plan='test_2' THEN
+   IF v_start IS NULL THEN RAISE EXCEPTION 'Pacote de teste sem data de inicio'; END IF;
    SELECT count(*) INTO v_count FROM public.attendance
-   WHERE student_id=p_student_id AND occurred_at>=coalesce(v_start,'-infinity'::timestamptz);
+   WHERE student_id=p_student_id AND occurred_at>=v_start;
    v_limit:=2;
  ELSE
    v_limit:=CASE v_plan WHEN 'monthly_1' THEN 1 WHEN 'monthly_2' THEN 2 WHEN 'monthly_3' THEN 3 ELSE NULL END;
    IF v_limit IS NULL THEN RAISE EXCEPTION 'Plano sem limite configurado'; END IF;
    v_week_start:=v_today-((extract(isodow from v_today)::integer)-1);
-   SELECT count(*) INTO v_count FROM public.attendance
+   SELECT count(DISTINCT (occurred_at AT TIME ZONE 'America/Fortaleza')::date) INTO v_count FROM public.attendance
    WHERE student_id=p_student_id
      AND (occurred_at AT TIME ZONE 'America/Fortaleza')::date BETWEEN v_week_start AND v_today;
  END IF;
