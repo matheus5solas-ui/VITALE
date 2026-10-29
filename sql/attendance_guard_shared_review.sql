@@ -18,10 +18,10 @@ BEGIN
  IF NOT FOUND OR NOT s.active THEN RAISE EXCEPTION 'Aluno indisponivel'; END IF;
  local_date := (NEW.occurred_at AT TIME ZONE 'America/Fortaleza')::date;
  IF NEW.source='manual' THEN
-   IF NEW.recorded_by IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION 'Autor invalido'; END IF;
+   IF auth.uid() IS NULL OR NEW.recorded_by IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION 'Autor invalido'; END IF;
    SELECT role INTO actor_role FROM public.staff WHERE user_id=auth.uid() AND active;
    IF NEW.appointment_id IS NULL THEN
-     IF actor_role NOT IN ('admin','reception') OR s.activity<>'Pilates' THEN
+     IF actor_role IS NULL OR actor_role NOT IN ('admin','reception') OR s.activity IS DISTINCT FROM 'Pilates' THEN
        RAISE EXCEPTION 'Registro sem agendamento restrito a recepcao';
      END IF;
      IF NEW.occurred_at>now()+interval '5 minutes'
@@ -50,7 +50,7 @@ BEGIN
  IF NEW.source='manual' AND NEW.appointment_id IS NOT NULL
    AND EXISTS(SELECT 1 FROM public.attendance WHERE appointment_id=NEW.appointment_id)
    THEN RAISE EXCEPTION 'Presenca ja registrada' USING errcode='23505'; END IF;
- IF s.pilates_plan='test_2' THEN
+ IF s.pilates_plan='test_2' AND NEW.source='manual' THEN
    IF s.test_plan_started_at IS NULL OR NEW.occurred_at<s.test_plan_started_at
      OR (SELECT count(*) FROM public.attendance WHERE student_id=s.id AND occurred_at>=s.test_plan_started_at)>=2
      THEN RAISE EXCEPTION 'Pacote esgotado'; END IF;
@@ -59,6 +59,6 @@ BEGIN
       AND NEW.occurred_at BETWEEN occurred_at-interval '30 minutes' AND occurred_at+interval '30 minutes')
      THEN RAISE EXCEPTION 'Esta aula ja foi registrada'; END IF;
  END IF;
- NEW.retain_until:=greatest(NEW.retain_until,NEW.occurred_at+interval '17 months');
+ NEW.retain_until:=greatest(coalesce(NEW.retain_until,NEW.occurred_at+interval '17 months'),NEW.occurred_at+interval '17 months');
  RETURN NEW;
 END $fn$;
