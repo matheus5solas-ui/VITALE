@@ -83,3 +83,5 @@ GRANT EXECUTE ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid
 -- BLOQUEIO ATUAL: vitale_private.check_manual_attendance() exige agendamento
 -- e recorded_by=auth.uid(). A RPC acima NAO funciona sem uma migracao
 -- revisada desse trigger; nao executar este rascunho isoladamente.
+-- Necessario: atualizar o trigger com a mesma validacao atomica de limite
+-- semanal e data retroativa; nao executar antes de homologacao.
