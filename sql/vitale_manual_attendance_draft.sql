@@ -3,7 +3,7 @@
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS manual_reason text;
 
 CREATE OR REPLACE FUNCTION public.vitale_manual_pilates_attendance(
-  p_student_id uuid, p_reason text, p_appointment_id uuid DEFAULT NULL
+  p_student_id uuid, p_reason text, p_appointment_id uuid DEFAULT NULL, p_occurred_at timestamptz DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
@@ -15,6 +15,8 @@ DECLARE
  v_limit integer;
  v_week_start date;
  v_today date;
+ v_presence_date date;
+ v_when timestamptz;
  v_count integer;
  v_existing uuid;
  v_id uuid;
@@ -34,8 +36,13 @@ BEGIN
    AND student_id=p_student_id AND activity='Pilates' AND status IN ('scheduled','present','completed')
  ) THEN RAISE EXCEPTION 'Agendamento invalido para este aluno'; END IF;
  v_today := (now() AT TIME ZONE 'America/Fortaleza')::date;
+ v_when := coalesce(p_occurred_at,now());
+ v_presence_date := (v_when AT TIME ZONE 'America/Fortaleza')::date;
+ IF v_when>now()+interval '5 minutes' OR v_presence_date<v_today-30 THEN
+   RAISE EXCEPTION 'Data de presenca fora do prazo permitido';
+ END IF;
  SELECT id INTO v_existing FROM public.attendance
- WHERE student_id=p_student_id AND (occurred_at AT TIME ZONE 'America/Fortaleza')::date=v_today
+ WHERE student_id=p_student_id AND (occurred_at AT TIME ZONE 'America/Fortaleza')::date=v_presence_date
  ORDER BY occurred_at LIMIT 1;
  IF v_existing IS NOT NULL THEN
    RETURN jsonb_build_object('duplicate',true,'reason','same_day','message','Presenca ja registrada');
@@ -48,16 +55,16 @@ BEGIN
  ELSE
    v_limit:=CASE v_plan WHEN 'monthly_1' THEN 1 WHEN 'monthly_2' THEN 2 WHEN 'monthly_3' THEN 3 ELSE NULL END;
    IF v_limit IS NULL THEN RAISE EXCEPTION 'Plano sem limite configurado'; END IF;
-   v_week_start:=v_today-((extract(isodow from v_today)::integer)-1);
+   v_week_start:=v_presence_date-((extract(isodow from v_presence_date)::integer)-1);
    SELECT count(DISTINCT (occurred_at AT TIME ZONE 'America/Fortaleza')::date) INTO v_count FROM public.attendance
    WHERE student_id=p_student_id
-     AND (occurred_at AT TIME ZONE 'America/Fortaleza')::date BETWEEN v_week_start AND v_today;
+     AND (occurred_at AT TIME ZONE 'America/Fortaleza')::date BETWEEN v_week_start AND v_week_start+6;
  END IF;
  IF v_count>=v_limit THEN
    RETURN jsonb_build_object('blocked',true,'reason','plan_exhausted','message','Limite de aulas atingido. Solicite autorizacao da recepcao.');
  END IF;
  INSERT INTO public.attendance(student_id,appointment_id,occurred_at,source,recorded_by,manual_reason)
- VALUES (p_student_id,p_appointment_id,now(),'manual',v_actor,trim(p_reason))
+ VALUES (p_student_id,p_appointment_id,v_when,'manual',v_actor,trim(p_reason))
  RETURNING id INTO v_id;
  IF p_appointment_id IS NOT NULL THEN
    UPDATE public.appointments SET status='present' WHERE id=p_appointment_id AND status='scheduled';
@@ -65,10 +72,14 @@ BEGIN
  RETURN jsonb_build_object('attendance_id',v_id,'message','Presenca manual registrada');
 END $$;
 
-REVOKE ALL ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid,timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.vitale_manual_pilates_attendance(uuid,text,uuid,timestamptz) TO authenticated;
 -- ATENCAO: a politica de INSERT atual continua ativa ate migrarmos TODOS os fluxos
 -- de presenca manual (inclusive o botao da agenda) para esta RPC.
 -- Nao remover a politica neste arquivo de preparacao.
 -- PENDENCIA: fazer a facial usar a mesma validacao atomica de saldo e duplicidade.
 
+
+-- BLOQUEIO ATUAL: vitale_private.check_manual_attendance() exige agendamento
+-- e recorded_by=auth.uid(). A RPC acima NAO funciona sem uma migracao
+-- revisada desse trigger; nao executar este rascunho isoladamente.
