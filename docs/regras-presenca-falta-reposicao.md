@@ -12,3 +12,9 @@ Status: especificacao em desenvolvimento; nao aplicada ao sistema em producao.
 - Registrar autor, data e justificativa das alteracoes; impedir duplicidade de presenca no mesmo dia e registrar eventos faciais separadamente.
 - Apos vencimento, manter historico; bloquear reposicao fora do prazo, salvo excecao explicita de administrador a definir.
 - Nao aplicar migracoes nem alterar o conector facial antes de testes de seguranca e regressao.
+
+## Fechamento automatico da semana
+- Ao virar de sabado para domingo no fuso America/Fortaleza, marcar automaticamente como falta (amarelo) as aulas previstas e nao realizadas de segunda a sabado.
+- Operacao idempotente: reexecutar nao pode gerar faltas duplicadas; deve funcionar mesmo se o computador local estiver desligado, usando processamento no servidor ou calculo derivado confiavel.
+- Respeitar o inicio e o fim do pacote, sem criar faltas para dias anteriores a ativacao ou posteriores ao vencimento.
+- A falta permanece disponivel para reposicao manual ate a data de vencimento do pacote; manter trilha de auditoria ao converter amarelo para verde.
