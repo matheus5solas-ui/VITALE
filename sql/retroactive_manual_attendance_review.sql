@@ -1,6 +1,8 @@
 -- REVIEW ONLY: never run in production before staging tests.
 -- Allows an authenticated admin/reception to record a past Pilates class
 -- without an appointment, preserving the original class date and audit actor.
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS manual_reason text;
+
 CREATE OR REPLACE FUNCTION vitale_private.check_manual_attendance()
 RETURNS trigger LANGUAGE plpgsql SET search_path TO ''
 AS $fn$
@@ -19,6 +21,7 @@ BEGIN
  SELECT * INTO s FROM public.students WHERE id=NEW.student_id FOR UPDATE;
  IF NOT FOUND OR NOT s.active THEN RAISE EXCEPTION 'Aluno indisponivel'; END IF;
  IF NEW.appointment_id IS NULL THEN
+   IF length(trim(coalesce(NEW.manual_reason,'')))<8 THEN RAISE EXCEPTION 'Justificativa obrigatoria'; END IF;
    SELECT role INTO actor_role FROM public.staff
     WHERE user_id=auth.uid() AND active=true LIMIT 1;
    IF actor_role IS NULL OR actor_role NOT IN ('admin','reception')
