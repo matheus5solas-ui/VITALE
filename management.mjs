@@ -5,7 +5,7 @@ const sendingInvites=new Set();
 let rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]},kind='income',loadVersion=0;
 $('financeMonth').value=today.slice(0,7);
 async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!role){rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};return;}
-const tables=role==='admin'?Object.keys(rows):role==='reception'?['ledger']:['clinical_records'];
+const tables=role==='admin'?Object.keys(rows):role==='professional'?['clinical_records']:[];
 try{const values=await Promise.all(tables.map(t=>allRows(t,`${t==='partner_connections'?'partner':'created_at'}.desc`,t==='team_members'?'id,name,email,username,role,registration,active,user_id,created_at,invited_at,invite_expires_at,accepted_at':'*')));if(version!==loadVersion||role!==currentStaff()?.role)return;rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};tables.forEach((t,i)=>rows[t]=values[i]);render();}catch(e){notify(e.message);}}
 window.addEventListener('vitale:refresh',load);
 function render(){const d=currentData(),role=currentStaff()?.role;
