@@ -37,7 +37,7 @@ submit($('partnerForm'),d=>api('/rest/v1/partner_connections?on_conflict=partner
 if(currentStaff())load();
 
 function renderTeam(){
-$('teamRows').innerHTML=rows.team_members.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.username||'Não definido')}</td><td>${r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${r.username&&r.user_id?'Habilitado':r.user_id?'Acesso anterior por e-mail':'Acesso pendente'}</td><td><button data-edit-team="${r.id}">Editar / definir acesso</button></td></tr>`).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
+$('teamRows').innerHTML=rows.team_members.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.username||'Não definido')}</td><td>${r.role==='admin'?'Administrador':r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${r.username&&r.user_id?'Habilitado':r.user_id?'Acesso anterior por e-mail':'Acesso pendente'}</td><td><button data-edit-team="${r.id}">Editar / definir acesso</button></td></tr>`).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
 }
 document.addEventListener('click',e=>{
 const edit=e.target.closest('[data-edit-team]');if(!edit)return;
