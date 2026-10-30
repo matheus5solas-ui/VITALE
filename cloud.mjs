@@ -150,7 +150,7 @@ function renderClasses(){
 const teacherDialog=document.createElement('dialog');
 teacherDialog.id='teacherClassDialog';
 teacherDialog.style.cssText='width:min(460px,94vw);border:0;border-radius:14px;padding:26px;box-shadow:0 18px 55px #0003';
-teacherDialog.innerHTML='<h3 style="margin:0 0 12px">Professor que ministrou a aula</h3><p id="teacherClassSummary" style="margin-bottom:16px"></p><form id="teacherClassForm"><label for="teacherClassSelect">Selecione o profissional</label><select id="teacherClassSelect" required style="width:100%;margin:8px 0 20px"></select><div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="secondary" id="teacherClassCancel">Cancelar</button><button type="submit" id="teacherClassSave">Salvar professor</button></div></form>';
+teacherDialog.innerHTML='<h3 style="margin:0 0 12px">Professor que ministrou a aula</h3><p id="teacherClassSummary" style="margin-bottom:16px"></p><form id="teacherClassForm" style="display:flex;flex-direction:column;gap:14px"><strong>Selecione o profissional</strong><div id="teacherClassOptions" role="radiogroup" aria-label="Profissionais ativos" style="display:flex;flex-direction:column;gap:8px"></div><div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="secondary" id="teacherClassCancel">Cancelar</button><button type="submit" id="teacherClassSave">Salvar professor</button></div></form>';
 document.body.append(teacherDialog);
 $('teacherClassCancel').onclick=()=>teacherDialog.close();
 let editingTeacherAttendanceId=null;
@@ -164,16 +164,24 @@ document.addEventListener('click',e=>{
  editingTeacherAttendanceId=attendance.id;
  const student=data.students.find(s=>s.id===attendance.student_id);
  $('teacherClassSummary').textContent=(student?.name||'Aluno')+' · '+new Date(attendance.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'});
- const select=$('teacherClassSelect');
- select.replaceChildren(new Option('Selecione um profissional',''));
- professionals.forEach(p=>select.add(new Option(p.name,p.user_id)));
- select.value=attendance.taught_by_professional_id||'';
+ const options=$('teacherClassOptions');
+ options.replaceChildren();
+ professionals.forEach((p,i)=>{
+  const label=document.createElement('label');
+  label.style.cssText='display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #d6e0d9;border-radius:9px;cursor:pointer;color:#243c35;background:#fff';
+  const radio=document.createElement('input');
+  radio.type='radio';radio.name='teacherForClass';radio.value=p.user_id;radio.required=true;
+  radio.style.cssText='width:18px;height:18px;flex:0 0 auto;margin:0';
+  radio.checked=attendance.taught_by_professional_id===p.user_id;
+  const text=document.createElement('span');text.textContent=p.name;
+  label.append(radio,text);options.append(label);
+ });
  teacherDialog.showModal();
 });
 $('teacherClassForm').onsubmit=async e=>{
  e.preventDefault();
  if(staff?.role!=='admin'||!editingTeacherAttendanceId)return notify('Acesso restrito.');
- const selectedId=$('teacherClassSelect').value;
+ const selectedId=teacherDialog.querySelector('input[name="teacherForClass"]:checked')?.value;
  const chosen=data.professionals.find(p=>p.user_id===selectedId&&p.active);
  if(!chosen)return notify('Selecione um profissional cadastrado.');
  const save=$('teacherClassSave');save.disabled=true;
