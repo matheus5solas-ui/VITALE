@@ -91,7 +91,7 @@ $('date').onchange=render;$('search').oninput=render;$('refresh').onclick=()=>re
 async function restoreSession(){
  try{const saved=JSON.parse(sessionStorage.getItem(sessionKey)||'null');if(!saved?.access_token||!saved?.refresh_token||!saved?.user?.id)return;session=saved;$('loginMessage').textContent='Restaurando sessão…';await enterWorkspace();$('loginMessage').textContent='';}
  catch(err){$('loginMessage').textContent=err.message;}
- finally{document.body.classList.remove('vitale-restoring');}
+ finally{document.documentElement.classList.remove('vitale-restoring');}
 }
 setInterval(async()=>{
  if(!session||!staff||document.hidden||polling||document.querySelector('dialog[open]'))return;
