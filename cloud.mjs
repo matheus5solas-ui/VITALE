@@ -6,6 +6,7 @@ const day=d=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Fortaleza',year:
 const today=day(new Date());$('date').value=today;
 const notify=s=>$('message').textContent=s;
 const sessionKey='vitale.session';
+const viewKey='vitale.activeView';
 let refreshing=null,polling=false;
 function saveSession(result){session={access_token:result.access_token,refresh_token:result.refresh_token,user:result.user,expires_at:Date.now()/1000+result.expires_in};try{sessionStorage.setItem(sessionKey,JSON.stringify(session));}catch{}}
 async function refreshSession(){
@@ -34,7 +35,7 @@ async function api(path,options={},retry=true){
  if(!response.ok)throw Error(response.status===403?'Seu perfil não permite esta ação.':response.status===409?'Já existe um registro com esses dados.':'Não foi possível salvar ou carregar. Tente novamente.');
  return response.status===204?null:response.json();
 }
-function logout(){try{sessionStorage.removeItem(sessionKey);}catch{}session=null;staff=null;data={students:[],appointments:[],attendance:[],professionals:[]};facialRoster=null;facialRosterError=null;$('loginPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('password').value='';$('studentForm').reset();$('appointmentForm').reset();document.querySelectorAll('dialog[open]').forEach(d=>d.close());render();}
+function logout(){try{sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(viewKey);}catch{}session=null;staff=null;data={students:[],appointments:[],attendance:[],professionals:[]};facialRoster=null;facialRosterError=null;$('loginPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('password').value='';$('studentForm').reset();$('appointmentForm').reset();document.querySelectorAll('dialog[open]').forEach(d=>d.close());render();}
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textContent='Entrando…';const password=$('password').value;try{
  const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim().includes('@')?$('email').value.trim():$('email').value.trim().toLowerCase()+'@login.vitale.invalid',password}),signal:AbortSignal.timeout(12000)});
  if(!r.ok)throw Error('Não foi possível entrar. Confira seu usuário e senha.');
@@ -79,7 +80,7 @@ function render(){
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
  $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();renderFacialRoster();
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;try{sessionStorage.setItem(viewKey,b.dataset.view);}catch{}document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>{openStudent();};
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
@@ -90,6 +91,7 @@ $('date').onchange=render;$('search').oninput=render;$('refresh').onclick=()=>re
 async function restoreSession(){
  try{const saved=JSON.parse(sessionStorage.getItem(sessionKey)||'null');if(!saved?.access_token||!saved?.refresh_token||!saved?.user?.id)return;session=saved;$('loginMessage').textContent='Restaurando sessão…';await enterWorkspace();$('loginMessage').textContent='';}
  catch(err){$('loginMessage').textContent=err.message;}
+ finally{document.documentElement.classList.remove('vitale-restoring');}
 }
 setInterval(async()=>{
  if(!session||!staff||document.hidden||polling||document.querySelector('dialog[open]'))return;
@@ -97,7 +99,7 @@ setInterval(async()=>{
 },5000);
 restoreSession();
 
-function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.classList.toggle('hidden',!el.dataset.roles.split(',').includes(staff?.role)));document.querySelector('[data-view=agenda]').click();}
+function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.classList.toggle('hidden',!el.dataset.roles.split(',').includes(staff?.role)));const previousView=sessionStorage.getItem(viewKey)||'agenda';const target=document.querySelector('[data-view="'+previousView+'"]');(target&&(!target.dataset.roles||target.dataset.roles.split(',').includes(staff?.role))?target:document.querySelector('[data-view=agenda]')).click();}
 export {api,esc,day,today,notify,reload,allRows};
 export const currentStaff=()=>staff;
 export const currentData=()=>data;
