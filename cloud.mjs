@@ -99,7 +99,7 @@ setInterval(async()=>{
 },5000);
 restoreSession();
 
-function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.classList.toggle('hidden',!el.dataset.roles.split(',').includes(staff?.role)));const previousView=sessionStorage.getItem(viewKey)||'agenda';const target=document.querySelector('[data-view="'+previousView+'"]');(target&&!target.dataset.roles?.split(',').includes('')&&(!target.dataset.roles||target.dataset.roles.split(',').includes(staff?.role))?target:document.querySelector('[data-view=agenda]')).click();}
+function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.classList.toggle('hidden',!el.dataset.roles.split(',').includes(staff?.role)));const previousView=sessionStorage.getItem(viewKey)||'agenda';const target=document.querySelector('[data-view="'+previousView+'"]');(target&&(!target.dataset.roles||target.dataset.roles.split(',').includes(staff?.role))?target:document.querySelector('[data-view=agenda]')).click();}
 export {api,esc,day,today,notify,reload,allRows};
 export const currentStaff=()=>staff;
 export const currentData=()=>data;
