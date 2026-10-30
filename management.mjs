@@ -5,7 +5,7 @@ const sendingInvites=new Set();
 let rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]},kind='income',loadVersion=0;
 $('financeMonth').value=today.slice(0,7);
 async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!role){rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};return;}
-const tables=role==='admin'?Object.keys(rows):role==='reception'?['ledger']:['clinical_records'];
+const tables=role==='admin'?Object.keys(rows):role==='professional'?['clinical_records']:[];
 try{const values=await Promise.all(tables.map(t=>allRows(t,`${t==='partner_connections'?'partner':'created_at'}.desc`,t==='team_members'?'id,name,email,username,role,registration,active,user_id,created_at,invited_at,invite_expires_at,accepted_at':'*')));if(version!==loadVersion||role!==currentStaff()?.role)return;rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};tables.forEach((t,i)=>rows[t]=values[i]);render();}catch(e){notify(e.message);}}
 window.addEventListener('vitale:refresh',load);
 function render(){const d=currentData(),role=currentStaff()?.role;
@@ -37,7 +37,7 @@ submit($('partnerForm'),d=>api('/rest/v1/partner_connections?on_conflict=partner
 if(currentStaff())load();
 
 function renderTeam(){
-$('teamRows').innerHTML=rows.team_members.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.username||'Não definido')}</td><td>${r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${r.username&&r.user_id?'Habilitado':r.user_id?'Acesso anterior por e-mail':'Acesso pendente'}</td><td><button data-edit-team="${r.id}">Editar / definir acesso</button></td></tr>`).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
+$('teamRows').innerHTML=rows.team_members.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.username||'Não definido')}</td><td>${r.role==='admin'?'Administrador':r.role==='professional'?'Fisioterapeuta':'Recepção'}</td><td>${esc(r.registration||'—')}</td><td>${r.username&&r.user_id?'Habilitado':r.user_id?'Acesso anterior por e-mail':'Acesso pendente'}</td><td><button data-edit-team="${r.id}">Editar / definir acesso</button></td></tr>`).join('')||'<tr><td colspan="6">Nenhum profissional cadastrado.</td></tr>';
 }
 document.addEventListener('click',e=>{
 const edit=e.target.closest('[data-edit-team]');if(!edit)return;
