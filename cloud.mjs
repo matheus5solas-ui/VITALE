@@ -43,7 +43,7 @@ $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textConte
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
 async function allRows(table,order="",select="*"){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=${select}&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
-async function reload(){const userId=session?.user.id;const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));if(['admin','reception'].includes(staff?.role))loadFacialRoster();}
+async function reload(){const userId=session?.user.id;if(staff?.role==='professional'){const classRows=$('classRows');if(classRows)classRows.innerHTML='<p class="empty">Atualizando alunos autorizados…</p>';}const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));if(['admin','reception'].includes(staff?.role))loadFacialRoster();}
 const name=id=>data.students.find(s=>s.id===id)?.name||'Aluno';
 let facialRoster=null,facialRosterError=null,facialLoading=false;
 async function loadFacialRoster(){
@@ -80,7 +80,7 @@ function render(){
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
  $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();renderFacialRoster();
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;try{sessionStorage.setItem(viewKey,b.dataset.view);}catch{}document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;try{sessionStorage.setItem(viewKey,b.dataset.view);}catch{}if(b.dataset.view==='classes')renderClasses();document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>{openStudent();};
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
@@ -150,7 +150,8 @@ function classAttendance(student,current=true){return data.attendance.filter(t=>
 function teacher(a){return data.professionals.find(p=>p.user_id===a?.professional_id)?.name||'Professor não informado';}
 function classAppointments(student){return data.appointments.filter(a=>a.student_id===student.id&&a.activity==='Pilates'&&a.status!=='cancelled'&&(student.pilates_plan==='test_2'?a.ends_at>=student.test_plan_started_at:day(a.starts_at).slice(0,7)===day(new Date()).slice(0,7))).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));}
 function renderClasses(){
- const rows=data.students.filter(s=>s.active&&s.activity==='Pilates'&&s.name.toLowerCase().includes(($('classSearch')?.value||'').toLowerCase()));
+ const allowed=staff?.role==='professional'?new Set(data.appointments.filter(a=>a.professional_id===session?.user?.id).map(a=>a.student_id).concat(data.students.filter(s=>s.responsible_professional_id===session?.user?.id).map(s=>s.id))):null;
+ const rows=data.students.filter(s=>(!allowed||allowed.has(s.id))&&s.active&&s.activity==='Pilates'&&s.name.toLowerCase().includes(($('classSearch')?.value||'').toLowerCase()));
  $('classRows').innerHTML=rows.map(s=>{
  const appointments=classAppointments(s), attendance=classAttendance(s);
  const weeklyLimit={monthly_1:1,monthly_2:2,monthly_3:3}[s.pilates_plan];
