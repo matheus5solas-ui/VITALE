@@ -147,20 +147,24 @@ function renderClasses(){
  return '<article class="card" style="margin-bottom:20px"><div class="toolbar"><h3>'+esc(s.name)+'</h3><button class="secondary" data-print-classes="'+s.id+'">Histórico completo (A4)</button><button class="secondary" data-print-receipt="'+s.id+'">Imprimir comprovante</button>'+(staff?.role!=='professional'&&s.pilates_plan==='test_2'?'<button data-renew-classes="'+s.id+'">Renovar pacote de teste</button>':'')+'</div><p>'+(s.pilates_plan==='test_2'?'Pacote de teste · 2 aulas · horário livre · intervalo mínimo de 30 minutos':'Presenças da semana · plano '+weeklyLimit+'x por semana')+'</p><div style="display:flex;gap:8px;flex-wrap:wrap" role="group" aria-label="Progresso das aulas">'+dots+'</div><p style="font-weight:600;color:'+(exhausted?'#b42318':'#174c39')+'">'+(testExhausted?'Renovar matrícula — todas as aulas consumidas':used+' de '+total+' aulas com presença')+'</p><table><thead><tr><th>Aula</th><th>Professor vinculado</th><th>Presença</th><th>Ação</th></tr></thead><tbody>'+appointments.map(a=>{const t=attendance.find(t=>t.appointment_id===a.id);return '<tr><td>'+esc(new Date(a.starts_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'}))+'</td><td>'+esc(t?.taught_by_professional_id?data.professionals.find(p=>p.user_id===t.taught_by_professional_id)?.name:teacher(a))+'</td><td>'+(t?esc(new Date(t.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'}))+' · '+(t.source==='facial'?'Facial':'Manual'):'Pendente')+'</td><td>'+(!t&&a.status==='scheduled'&&!exhausted&&(s.pilates_plan==='test_2'||new Date(a.starts_at)<=new Date())?'<button data-present="'+a.id+'">Marcar presença manual</button>':t&&staff?.role==='admin'?'<button class="secondary" data-edit-class-teacher="'+t.id+'">Editar professor</button>':'—')+'</td></tr>';}).join('')+attendance.filter(t=>!t.appointment_id).map(t=>'<tr><td>Aula em horário livre</td><td>'+esc(data.professionals.find(p=>p.user_id===t.taught_by_professional_id)?.name||'Professor não informado')+'</td><td>'+esc(new Date(t.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'}))+' · '+(t.source==='facial'?'Facial':'Manual')+'</td><td>'+(staff?.role==='admin'?'<button class="secondary" data-edit-class-teacher="'+t.id+'">Editar professor</button>':'—')+'</td></tr>').join('')+'</tbody></table>'+(!appointments.length&&!attendance.length?'<p>Nenhuma presença ou aula agendada.</p>':'')+'</article>';
  }).join('')||'<p>Nenhum aluno de Pilates disponível.</p>';
 }
-const teacherDialog=document.createElement('dialog');
+const teacherDialog=document.getElementById('teacherClassDialog')||document.createElement('dialog');
 teacherDialog.id='teacherClassDialog';
 teacherDialog.style.cssText='width:min(460px,94vw);border:0;border-radius:14px;padding:26px;box-shadow:0 18px 55px #0003';
 teacherDialog.innerHTML='<h3 style="margin:0 0 12px">Professor que ministrou a aula</h3><p id="teacherClassSummary" style="margin-bottom:16px"></p><form id="teacherClassForm" style="display:flex;flex-direction:column;gap:14px"><strong>Selecione o profissional</strong><div id="teacherClassOptions" role="radiogroup" aria-label="Profissionais ativos" style="display:flex;flex-direction:column;gap:8px"></div><div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="secondary" id="teacherClassCancel">Cancelar</button><button type="submit" id="teacherClassSave">Salvar professor</button></div></form>';
-document.body.append(teacherDialog);
+if(!teacherDialog.isConnected)document.body.append(teacherDialog);
 $('teacherClassCancel').onclick=()=>teacherDialog.close();
 let editingTeacherAttendanceId=null;
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-edit-class-teacher]');if(!button)return;
  if(staff?.role!=='admin')return notify('Acesso restrito.');
  const attendance=data.attendance.find(a=>a.id===button.dataset.editClassTeacher);
  if(!attendance)return notify('Aula não encontrada.');
- const professionals=data.professionals.filter(p=>p.active);
- if(!professionals.length)return notify('Cadastre um profissional ativo primeiro.');
+ let professionals;
+ try{
+  professionals=(await allRows('professionals')).filter(p=>p.active);
+  data.professionals=professionals;
+ }catch(error){return notify('Não foi possível carregar profissionais: '+error.message);}
+ if(!professionals.length)return notify('Nenhum profissional ativo disponível para sua conta. Verifique as permissões.');
  editingTeacherAttendanceId=attendance.id;
  const student=data.students.find(s=>s.id===attendance.student_id);
  $('teacherClassSummary').textContent=(student?.name||'Aluno')+' · '+new Date(attendance.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'});
@@ -176,7 +180,9 @@ document.addEventListener('click',e=>{
   const text=document.createElement('span');text.textContent=p.name;
   label.append(radio,text);options.append(label);
  });
- teacherDialog.showModal();
+ // Avoid stacked dialogs if a prior editor was left open.
+ document.querySelectorAll('dialog[open]').forEach(d=>{if(d!==teacherDialog)d.close();});
+ if(!teacherDialog.open)teacherDialog.showModal();
 });
 $('teacherClassForm').onsubmit=async e=>{
  e.preventDefault();
