@@ -99,13 +99,18 @@ $('faceLinkForm').addEventListener('submit',async e=>{
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
  $('countStudents').textContent=data.students.length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
+ const absenceSummary=$('weeklyAbsenceSummary');
+ if(absenceSummary){
+  const rows=(data.pilates_weekly_absences||[]).filter(w=>w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
+  absenceSummary.innerHTML=rows.length?'<h3>Faltas e justificativas</h3>'+rows.sort((a,b)=>b.week_start.localeCompare(a.week_start)).map(w=>'<p><strong>'+esc(name(w.student_id))+'</strong> · semana '+esc(w.week_start)+' a '+esc(w.week_end)+' · '+w.missing_classes+' aula(s): <strong>'+({pending_review:'Aguardando conferência',reviewed:'Falta confirmada',excused:'Desconsiderada / justificada'}[w.status]||esc(w.status))+'</strong>'+(w.notes?' · '+esc(w.notes):'')+'</p>').join(''):'<p>Nenhuma falta apurada.</p>';
+ }
  const absenceBox=$('weeklyAbsenceAlerts');
  if(absenceBox){
   const pending=(data.pilates_weekly_absences||[]).filter(w=>w.status==='pending_review'&&w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id))).sort((a,b)=>b.week_start.localeCompare(a.week_start));
   absenceBox.innerHTML='<h3>Frequência semanal · '+pending.length+' pendência(s) para conferir</h3>'+(pending.length?pending.map(w=>'<div class="card" style="margin:8px 0;padding:14px"><strong>'+esc(name(w.student_id))+'</strong> · semana '+esc(w.week_start)+' a '+esc(w.week_end)+'<p>'+w.attended_classes+' de '+w.expected_classes+' aula(s) · '+w.missing_classes+' possível(is) falta(s). Confira os dias combinados e reposições antes de confirmar.</p><button type="button" data-absence-action="reviewed" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Confirmar falta</button> <button type="button" class="secondary" data-absence-action="excused" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Desconsiderar / justificar</button></div>').join(''):'<p>Nenhuma frequência pendente de conferência.</p>');
  }
  $('appointments').innerHTML=data.appointments.filter(a=>day(a.starts_at)===$('date').value).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).map(a=>`<tr><td>${new Date(a.starts_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}</td><td><button class="secondary" data-view-student="${a.student_id}">${esc(name(a.student_id))}</button></td><td>${esc(a.activity)}</td><td>${esc(data.professionals.find(p=>p.user_id===a.professional_id)?.name||'Profissional')}</td><td>${esc({scheduled:'Agendado',present:'Presente',cancelled:'Cancelado',completed:'Concluído',absent:'Falta'}[a.status])}</td><td>${a.status==='scheduled'?`<button data-present="${a.id}">Confirmar presença</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum agendamento nesta data.</td></tr>';
- $('studentRows').innerHTML=data.students.filter(s=>s.name.toLowerCase().includes($('search').value.toLowerCase())).map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
+ $('studentRows').innerHTML=data.students.filter(s=>s.active&&s.name.toLowerCase().includes($('search').value.toLowerCase())).map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''} ${staff?.role==='admin'?`<button type="button" class="secondary" data-archive-student="${s.id}">Excluir aluno</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
  $('attendanceRows').innerHTML=[...data.attendance].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map(a=>`<tr><td>${esc(name(a.student_id))}</td><td>${new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})}</td><td>${a.source==='facial'?'Facial':'Manual'}</td><td>${a.appointment_id?'Aula vinculada':'Conferir'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nenhuma presença.</td></tr>';
  $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
@@ -126,6 +131,17 @@ document.addEventListener('click',async e=>{
  btn.disabled=true;
  try{await api('/rest/v1/rpc/vitale_review_weekly_absence',{method:'POST',body:JSON.stringify({p_student_id:studentId,p_week_start:weekStart,p_action:action,p_note:note||null})});await reload();notify(action==='excused'?'Falta desconsiderada com justificativa.':'Falta confirmada pelo profissional.');}
  catch(error){notify(error.message||'Não foi possível revisar a falta.');}
+ finally{btn.disabled=false;}
+});
+document.addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-archive-student]');if(!btn)return;
+ const student=data.students.find(s=>s.id===btn.dataset.archiveStudent);
+ if(!student||staff?.role!=='admin')return;
+ if(!confirm('Excluir '+student.name+' da lista de alunos ativos? O histórico será preservado.'))return;
+ if(prompt('Para confirmar, digite EXCLUIR:','')!=='EXCLUIR')return;
+ btn.disabled=true;
+ try{await api('/rest/v1/rpc/vitale_archive_student',{method:'POST',body:JSON.stringify({p_student_id:student.id})});await reload();notify('Aluno removido da lista de ativos. Histórico preservado.');}
+ catch(err){notify(err.message||'Falha ao excluir aluno.');}
  finally{btn.disabled=false;}
 });
 document.addEventListener('click',async e=>{const id=e.target.dataset.present;if(!id)return;const a=data.appointments.find(a=>a.id===id);if(!a)return;if(!confirm('Confirmar presença manual de '+name(a.student_id)+' nesta aula?'))return;e.target.disabled=true;try{await api('/rest/v1/attendance',{method:'POST',body:JSON.stringify({student_id:a.student_id,appointment_id:a.id,occurred_at:new Date().toISOString(),source:'manual',recorded_by:staff.user_id})});await reload();notify('Presença confirmada.');}catch(err){notify(err.message);}finally{e.target.disabled=false;}});
