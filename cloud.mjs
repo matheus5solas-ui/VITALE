@@ -43,7 +43,7 @@ $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMessage').textConte
  }catch(err){$('loginMessage').textContent=err.message;}finally{$('password').value='';}};
 $('logout').onclick=async()=>{try{if(session)await api('/auth/v1/logout',{method:'POST'});}catch{}finally{logout();}};
 async function allRows(table,order="",select="*"){let result=[];for(let offset=0;;offset+=1000){const page=await api(`/rest/v1/${table}?select=${select}&limit=1000&offset=${offset}${order?"&order="+order:""}`);result.push(...page);if(page.length<1000)return result;}}
-async function reload(){const userId=session?.user.id;if(staff?.role==='professional'){const classRows=$('classRows');if(classRows)classRows.innerHTML='<p class="empty">Atualizando alunos autorizados…</p>';}const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();window.dispatchEvent(new Event('vitale:refresh'));if(['admin','reception'].includes(staff?.role))loadFacialRoster();}
+async function reload(){const userId=session?.user.id;if(staff?.role==='professional'){const classRows=$('classRows');if(classRows)classRows.innerHTML='<p class="empty">Atualizando alunos autorizados…</p>';}const result=await Promise.all(['students','appointments','attendance','professionals'].map(t=>allRows(t)));if(!session||session.user.id!==userId)return;['students','appointments','attendance','professionals'].forEach((t,i)=>data[t]=result[i]);render();refreshFacialStudentOptions();window.dispatchEvent(new Event('vitale:refresh'));if(['admin','reception'].includes(staff?.role))loadFacialRoster();}
 const name=id=>data.students.find(s=>s.id===id)?.name||'Aluno';
 let facialRoster=null,facialRosterError=null,facialLoading=false;
 async function loadFacialRoster(){
@@ -53,7 +53,7 @@ async function loadFacialRoster(){
   const rows=await api('/rest/v1/rpc/vitale_facial_roster',{method:'POST',body:'{}'});
   facialRoster=Array.isArray(rows)?rows:[];facialRosterError=null;
  }catch(error){facialRoster=null;facialRosterError=error.message||'Falha ao consultar os vínculos.';}
- finally{facialLoading=false;renderFacialRoster();}
+ finally{facialLoading=false;renderFacialRoster();refreshFacialStudentOptions();}
 }
 function renderFacialRoster(){
  const pro=$('faceProfessionalRows'),stu=$('faceStudentRows');if(!pro||!stu)return;
@@ -69,6 +69,32 @@ function renderFacialRoster(){
  $('faceStatus').textContent=facialLoading?'Atualizando vínculos…':facialRosterError?'Não foi possível consultar os vínculos faciais: '+facialRosterError:'Os vínculos exibidos vêm do Supabase. A lista não verifica a biometria armazenada no Control iD em tempo real.';
 }
 $('refreshFace').onclick=()=>loadFacialRoster();
+function refreshFacialStudentOptions(){
+ const sel=$('faceLinkStudent');if(!sel)return;
+ const previous=sel.value;
+ const linked=new Set((facialRoster||[]).filter(r=>r.student_id).map(r=>r.student_id));
+ sel.innerHTML='<option value="">Selecione um aluno</option>'+data.students.filter(s=>s.active&&!linked.has(s.id)).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
+ if([...sel.options].some(o=>o.value===previous))sel.value=previous;
+}
+$('faceLinkForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ if(!['admin','reception'].includes(staff?.role))return;
+ const studentId=$('faceLinkStudent').value,raw=$('faceLinkId').value.trim();
+ const status=$('faceLinkMessage'),btn=$('faceLinkButton');
+ if(!studentId||!/^\\d+$/.test(raw)||BigInt(raw)<1n){status.textContent='Selecione o aluno e informe um ID facial válido.';return;}
+ const student=data.students.find(s=>s.id===studentId);
+ if(!student)return;
+ if(!confirm('Vincular o ID '+raw+' do Control iD ao aluno '+student.name+'? Confira o número no aparelho.'))return;
+ btn.disabled=true;status.textContent='Salvando vínculo…';
+ try{
+  await api('/rest/v1/rpc/vitale_link_facial_student',{method:'POST',body:JSON.stringify({p_student_id:studentId,p_user_id:Number(raw)})});
+  status.textContent='Vínculo salvo. Os reconhecimentos serão sincronizados pelo conector.';
+  $('faceLinkId').value='';
+  await loadFacialRoster();
+ }catch(err){status.textContent='Não foi possível vincular: '+err.message;}
+ finally{btn.disabled=false;}
+});
+
 
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
