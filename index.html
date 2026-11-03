@@ -19,6 +19,12 @@ body:has(#workspace.hidden){min-height:100vh;background:#e8eee7 url("data:image/
 <section id="attendance" class="hidden"><h3>Histórico de presenças</h3><table><thead><tr><th>Aluno</th><th>Dia e horário</th><th>Origem</th><th>Agendamento</th></tr></thead><tbody id="attendanceRows"></tbody></table></section>
 <section id="face" class="hidden">
 <div class="toolbar"><div><h3>Cadastros de reconhecimento facial</h3><small>Vínculos registrados na Vitale · não confirma a existência atual da biometria no aparelho.</small></div><button id="refreshFace" class="secondary" type="button">Atualizar lista</button></div>
+<form id="faceLinkForm" class="toolbar" style="flex-wrap:wrap;gap:12px;margin:14px 0" autocomplete="off">
+<label for="faceLinkStudent">Aluno <select id="faceLinkStudent" required style="min-width:220px"><option value="">Selecione um aluno</option></select></label>
+<label for="faceLinkId">ID no Control iD <input id="faceLinkId" type="number" min="1" step="1" required placeholder="Ex.: 18" style="width:120px"></label>
+<button id="faceLinkButton" type="submit">Vincular facial</button>
+<small id="faceLinkMessage" role="status" aria-live="polite">O aluno precisa estar cadastrado na Vitale e no aparelho facial.</small>
+</form>
 <div class="facial-grid">
 <article class="facial-panel"><h3>Profissionais <span id="faceProfessionalCount" class="badge">0</span></h3><div id="faceProfessionalRows" aria-live="polite"><p class="empty">Carregando…</p></div></article>
 <article class="facial-panel"><h3>Alunos e pacientes <span id="faceStudentCount" class="badge">0</span></h3><div id="faceStudentRows" aria-live="polite"><p class="empty">Carregando…</p></div></article>
