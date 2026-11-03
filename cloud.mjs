@@ -78,12 +78,12 @@ function refreshFacialStudentOptions(){
 }
 $('faceLinkForm').addEventListener('submit',async e=>{
  e.preventDefault();
- if(!['admin','reception'].includes(staff?.role))return;
+ if(!['admin','reception'].includes(staff?.role)){$('faceLinkMessage').textContent='Seu perfil não possui permissão para vincular alunos.';return;}
  const studentId=$('faceLinkStudent').value,raw=$('faceLinkId').value.trim();
  const status=$('faceLinkMessage'),btn=$('faceLinkButton');
- if(!studentId||!/^\\d+$/.test(raw)||BigInt(raw)<1n){status.textContent='Selecione o aluno e informe um ID facial válido.';return;}
+ if(!studentId||!/^[0-9]+$/.test(raw)||BigInt(raw)<1n){status.textContent='Selecione o aluno e informe um ID facial válido.';return;}
  const student=data.students.find(s=>s.id===studentId);
- if(!student)return;
+ if(!student){status.textContent='Aluno não encontrado. Atualize a lista e tente novamente.';return;}
  if(!confirm('Vincular o ID '+raw+' do Control iD ao aluno '+student.name+'? Confira o número no aparelho.'))return;
  btn.disabled=true;status.textContent='Salvando vínculo…';
  try{
