@@ -154,7 +154,7 @@ async function restoreSession(){
 }
 setInterval(async()=>{
  if(!session||!staff||document.hidden||polling||document.querySelector('dialog[open]'))return;
- polling=true;try{const userId=session.user.id;const rows=await allRows('attendance');if(session?.user.id!==userId)return;data.attendance=rows;render();}catch(err){notify(err.message);}finally{polling=false;}
+ polling=true;try{const userId=session.user.id;const rows=await allRows('attendance');if(session?.user.id!==userId)return;if(JSON.stringify(rows)!==JSON.stringify(data.attendance)){data.attendance=rows;render();}}catch(err){notify(err.message);}finally{polling=false;}
 },5000);
 restoreSession();
 
