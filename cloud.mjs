@@ -301,8 +301,16 @@ historyField('vitaleHistoryForm').onsubmit=async e=>{
  try{
   if(isPresence)await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:id,p_date:date,p_time:time.length===5?time+':00':time})});
   else await api('/rest/v1/rpc/vitale_set_class_adjustment',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:date,p_status:status,p_makeup_date:makeupDate,p_note:note})});
-  historyDialog.close();await reload();notify(isPresence?'Presença registrada com sucesso.':'Falta atualizada com sucesso.');
- }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';}
+  await reload();
+  if(isPresence){
+   const recorded=data.attendance.some(a=>a.student_id===id&&day(a.occurred_at)===date);
+   if(!recorded)throw Error('O servidor respondeu, mas a presença não apareceu no histórico. Nenhuma confirmação foi emitida. Confira o registro facial antes de tentar novamente.');
+  }else{
+   const saved=(data.pilates_class_adjustments||[]).some(a=>a.student_id===id&&a.class_date===date&&a.status===status);
+   if(!saved)throw Error('A falta não apareceu no histórico após a gravação.');
+  }
+  historyDialog.close();notify(isPresence?'Presença confirmada no histórico.':'Falta confirmada no histórico.');
+ }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';notify('Falha no registro: '+error.textContent);}
  finally{save.disabled=false;}
 };
 function renderClasses(){
