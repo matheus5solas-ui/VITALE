@@ -249,41 +249,62 @@ document.addEventListener('click',e=>{
  if(staff?.role==='professional'&&s.responsible_professional_id!==session?.user?.id)return notify('Somente o profissional responsável pode alterar estes dias.');
  openWeekdaysDialog(s);
 });
-document.addEventListener('click',async e=>{
+// Formulário de histórico: calendário nativo, horário e mensagens de erro visíveis.
+const historyDialog=document.createElement('dialog');
+historyDialog.id='vitaleHistoryDialog';
+historyDialog.style.cssText='width:min(440px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
+historyDialog.innerHTML='<form id="vitaleHistoryForm" style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="date" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="submit">Confirmar</button></div></form>';
+document.body.append(historyDialog);
+let historyContext=null;
+const historyField=id=>document.getElementById(id);
+historyField('vitaleHistoryCancel').onclick=()=>historyDialog.close();
+historyField('vitaleHistoryStatus').onchange=()=>{
+ historyField('vitaleHistoryMakeupWrap').style.display=historyField('vitaleHistoryStatus').value==='made_up'?'grid':'none';
+};
+document.addEventListener('click',e=>{
  const btn=e.target.closest('[data-daily-absence],[data-manual-history],[data-edit-daily-absence]');if(!btn)return;
  const id=btn.dataset.dailyAbsence||btn.dataset.manualHistory||btn.dataset.editDailyAbsence;
  const student=data.students.find(s=>s.id===id);if(!student)return;
- const date=prompt('Data da aula (AAAA-MM-DD):',btn.dataset.absenceDate||'');
- if(date===null)return;
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return notify('Informe uma data no formato AAAA-MM-DD.');
  const isPresence=!!btn.dataset.manualHistory;
- let status='absent',makeupDate=null,note=null,time=null;
- if(isPresence){
-  time=prompt('Horário REAL da presença (HH:MM). Não informe um horário estimado:','');
-  if(time===null)return;
-  if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))return notify('Informe o horário real, no formato HH:MM.');
- }else{
-  const old=(data.pilates_class_adjustments||[]).find(a=>a.student_id===id&&a.class_date===date);
-  const choice=prompt('Situação: 1 = Falta confirmada, 2 = Justificada, 3 = Reposta (exige presença registrada na data da reposição).',old?.status==='excused'?'2':old?.status==='made_up'?'3':'1');
-  if(choice===null)return;
-  status=({'1':'absent','2':'excused','3':'made_up'})[choice];
-  if(!status)return notify('Selecione 1, 2 ou 3.');
-  if(status==='made_up'){
-   makeupDate=prompt('Data em que o aluno repôs a aula (AAAA-MM-DD):',old?.makeup_date||'');
-   if(makeupDate===null)return;
-   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(makeupDate))return notify('Informe a data válida.');
-  }
-  note=prompt('Observação (opcional):',old?.note||'');
-  if(note===null)return;
- }
- btn.disabled=true;
- try{
-  if(isPresence)await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:id,p_date:date,p_time:time+':00'})});
-  else await api('/rest/v1/rpc/vitale_set_class_adjustment',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:date,p_status:status,p_makeup_date:makeupDate,p_note:note})});
-  await reload();notify(isPresence?'Presença manual registrada com data e horário informados.':'Situação da falta atualizada.');
- }catch(err){notify(err.message||'Não foi possível salvar o registro.');}
- finally{btn.disabled=false;}
+ const old=(data.pilates_class_adjustments||[]).find(a=>a.student_id===id&&a.class_date===btn.dataset.absenceDate);
+ historyContext={id,isPresence};
+ historyField('vitaleHistoryTitle').textContent=isPresence?'Registrar presença manual':btn.dataset.editDailyAbsence?'Editar falta':'Registrar falta';
+ historyField('vitaleHistoryStudent').textContent=student.name;
+ historyField('vitaleHistoryDate').value=btn.dataset.absenceDate||'';
+ historyField('vitaleHistoryDate').min=student.plan_started_on||'';
+ historyField('vitaleHistoryDate').max=student.plan_expires_on||'';
+ historyField('vitaleHistoryTime').value='';
+ historyField('vitaleHistoryTimeWrap').style.display=isPresence?'grid':'none';
+ historyField('vitaleHistoryTime').required=isPresence;
+ historyField('vitaleHistoryStatusWrap').style.display=isPresence?'none':'grid';
+ historyField('vitaleHistoryNoteWrap').style.display=isPresence?'none':'grid';
+ historyField('vitaleHistoryStatus').value=old?.status||'absent';
+ historyField('vitaleHistoryMakeup').value=old?.makeup_date||'';
+ historyField('vitaleHistoryNote').value=old?.note||'';
+ historyField('vitaleHistoryError').textContent='';
+ historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
+ historyDialog.showModal();
 });
+historyField('vitaleHistoryForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(!historyContext)return;
+ const {id,isPresence}=historyContext;
+ const date=historyField('vitaleHistoryDate').value;
+ const time=historyField('vitaleHistoryTime').value;
+ const status=historyField('vitaleHistoryStatus').value;
+ const makeupDate=status==='made_up'?historyField('vitaleHistoryMakeup').value:null;
+ const note=historyField('vitaleHistoryNote').value;
+ const error=historyField('vitaleHistoryError');
+ if(isPresence&&!time){error.textContent='Informe o horário real da presença.';return;}
+ if(!isPresence&&status==='made_up'&&!makeupDate){error.textContent='Selecione a data da reposição.';return;}
+ const save=historyField('vitaleHistorySave');save.disabled=true;
+ try{
+  if(isPresence)await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:id,p_date:date,p_time:time.length===5?time+':00':time})});
+  else await api('/rest/v1/rpc/vitale_set_class_adjustment',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:date,p_status:status,p_makeup_date:makeupDate,p_note:note})});
+  historyDialog.close();await reload();notify(isPresence?'Presença registrada com sucesso.':'Falta atualizada com sucesso.');
+ }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';}
+ finally{save.disabled=false;}
+};
 function renderClasses(){
  const allowed=staff?.role==='professional'?new Set(data.appointments.filter(a=>a.professional_id===session?.user?.id).map(a=>a.student_id).concat(data.students.filter(s=>s.responsible_professional_id===session?.user?.id).map(s=>s.id))):null;
  const rows=data.students.filter(s=>(!allowed||allowed.has(s.id))&&s.active&&s.activity==='Pilates'&&s.name.toLowerCase().includes(($('classSearch')?.value||'').toLowerCase()));
