@@ -209,20 +209,37 @@ function teacher(a){return data.professionals.find(p=>p.user_id===a?.professiona
 function classAppointments(student){return data.appointments.filter(a=>a.student_id===student.id&&a.activity==='Pilates'&&a.status!=='cancelled'&&(student.pilates_plan==='test_2'?a.ends_at>=student.test_plan_started_at:day(a.starts_at).slice(0,7)===day(new Date()).slice(0,7))).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));}
 const weekdayNames=['Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 const weekdayLabel=days=>Array.isArray(days)&&days.length?days.map(n=>weekdayNames[n-1]||'?').join(', '):'Não definidos';
-document.addEventListener('click',async e=>{
+const weekdaysDialog=document.createElement('dialog');
+weekdaysDialog.id='weekdaysDialog';
+weekdaysDialog.style.cssText='width:min(540px,95vw);border:1px solid #d7e2dc;border-radius:16px;padding:24px;box-shadow:0 20px 65px #0003;max-height:90vh;overflow:auto';
+document.body.append(weekdaysDialog);
+function openWeekdaysDialog(student){
+ const limit={monthly_1:1,monthly_2:2,monthly_3:3}[student.pilates_plan];
+ if(!limit)return notify('Defina primeiro um plano de Pilates com frequência semanal.');
+ const current=new Set(student.weekly_class_days||[]);
+ weekdaysDialog.innerHTML='<form id="weekdaysForm"><h2 style="margin:0 0 8px">Dias de aula</h2><p><strong>'+esc(student.name)+'</strong> · '+limit+'x por semana</p><p style="color:#52665d">Selecione exatamente '+limit+' dia(s) habitual(is). O sistema usará esses dias na conferência automática de faltas.</p><div role="group" aria-label="Dias da semana" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:20px 0">'+weekdayNames.map((name,i)=>'<label style="border:1px solid #cbd9d1;border-radius:12px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer;background:'+(current.has(i+1)?'#e8f4ec':'#fff')+'"><input type="checkbox" name="weekday" value="'+(i+1)+'" '+(current.has(i+1)?'checked':'')+' style="width:18px;height:18px"><span>'+name+'</span></label>').join('')+'</div><p id="weekdaySelectionStatus" role="status" style="font-weight:600">Selecionados: '+current.size+' de '+limit+'</p><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px"><button type="submit" id="saveWeekdays">Salvar dias</button><button type="button" class="secondary" id="clearWeekdays">Limpar seleção</button><button type="button" class="secondary" id="cancelWeekdays">Cancelar</button></div></form>';
+ const form=weekdaysDialog.querySelector('form'),checks=[...form.querySelectorAll('input[name="weekday"]')];
+ const refresh=()=>{const count=checks.filter(x=>x.checked).length;form.querySelector('#weekdaySelectionStatus').textContent='Selecionados: '+count+' de '+limit;checks.forEach(x=>{x.closest('label').style.background=x.checked?'#e8f4ec':'#fff';});};
+ checks.forEach(x=>x.addEventListener('change',refresh));
+ form.querySelector('#cancelWeekdays').onclick=()=>weekdaysDialog.close();
+ form.querySelector('#clearWeekdays').onclick=()=>{checks.forEach(x=>x.checked=false);refresh();};
+ form.onsubmit=async e=>{
+  e.preventDefault();
+  const days=checks.filter(x=>x.checked).map(x=>Number(x.value));
+  if(days.length!==limit)return notify('Selecione exatamente '+limit+' dia(s) para este plano.');
+  const save=form.querySelector('#saveWeekdays');save.disabled=true;save.textContent='Salvando…';
+  try{await api('/rest/v1/rpc/vitale_set_student_weekdays',{method:'POST',body:JSON.stringify({p_student_id:student.id,p_days:days})});weekdaysDialog.close();await reload();notify('Dias de aula atualizados: '+weekdayLabel(days)+'.');}
+  catch(err){notify(err.message||'Não foi possível salvar os dias.');}
+  finally{save.disabled=false;save.textContent='Salvar dias';}
+ };
+ weekdaysDialog.showModal();
+}
+document.addEventListener('click',e=>{
  const btn=e.target.closest('[data-edit-weekdays]');if(!btn)return;
  const s=data.students.find(x=>x.id===btn.dataset.editWeekdays);
  if(!s||!s.active)return;
  if(staff?.role==='professional'&&s.responsible_professional_id!==session?.user?.id)return notify('Somente o profissional responsável pode alterar estes dias.');
- const choice=prompt('Dias habituais de '+s.name+'. Informe os números separados por vírgula: 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb. Deixe vazio para remover os dias definidos.',(s.weekly_class_days||[]).join(','));
- if(choice===null)return;
- const days=choice.trim()?choice.split(',').map(x=>Number(x.trim())):null;
- const limit={monthly_1:1,monthly_2:2,monthly_3:3}[s.pilates_plan];
- if(days&&(!limit||days.length!==limit||new Set(days).size!==days.length||days.some(n=>!Number.isInteger(n)||n<1||n>6)))return notify('Selecione '+limit+' dia(s) distinto(s) entre segunda e sábado.');
- btn.disabled=true;
- try{await api('/rest/v1/rpc/vitale_set_student_weekdays',{method:'POST',body:JSON.stringify({p_student_id:s.id,p_days:days})});await reload();notify('Dias de aula atualizados.');}
- catch(err){notify(err.message||'Não foi possível salvar os dias.');}
- finally{btn.disabled=false;}
+ openWeekdaysDialog(s);
 });
 function renderClasses(){
  const allowed=staff?.role==='professional'?new Set(data.appointments.filter(a=>a.professional_id===session?.user?.id).map(a=>a.student_id).concat(data.students.filter(s=>s.responsible_professional_id===session?.user?.id).map(s=>s.id))):null;
