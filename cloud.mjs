@@ -110,7 +110,7 @@ function render(){
   absenceBox.innerHTML='<h3>Frequência semanal · '+pending.length+' pendência(s) para conferir</h3>'+(pending.length?pending.map(w=>'<div class="card" style="margin:8px 0;padding:14px"><strong>'+esc(name(w.student_id))+'</strong> · semana '+esc(w.week_start)+' a '+esc(w.week_end)+'<p>'+w.attended_classes+' de '+w.expected_classes+' aula(s) · '+w.missing_classes+' possível(is) falta(s). Confira os dias combinados e reposições antes de confirmar.</p><button type="button" data-absence-action="reviewed" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Confirmar falta</button> <button type="button" class="secondary" data-absence-action="excused" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Desconsiderar / justificar</button></div>').join(''):'<p>Nenhuma frequência pendente de conferência.</p>');
  }
  $('appointments').innerHTML=data.appointments.filter(a=>day(a.starts_at)===$('date').value).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).map(a=>`<tr><td>${new Date(a.starts_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}</td><td><button class="secondary" data-view-student="${a.student_id}">${esc(name(a.student_id))}</button></td><td>${esc(a.activity)}</td><td>${esc(data.professionals.find(p=>p.user_id===a.professional_id)?.name||'Profissional')}</td><td>${esc({scheduled:'Agendado',present:'Presente',cancelled:'Cancelado',completed:'Concluído',absent:'Falta'}[a.status])}</td><td>${a.status==='scheduled'?`<button data-present="${a.id}">Confirmar presença</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum agendamento nesta data.</td></tr>';
- const studentTableHtml=data.students.filter(s=>s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLowerCase().includes($('search').value.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})||a.id.localeCompare(b.id)).map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''} <button type="button" class="secondary" data-edit-weekdays="${s.id}">Dias da semana</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
+ const studentTableHtml=data.students.filter(s=>s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLowerCase().includes($('search').value.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})||a.id.localeCompare(b.id)).map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''} <button type="button" class="secondary" data-edit-weekdays="${s.id}">Dias da semana</button> ${staff?.role==='admin'?`<button type="button" class="secondary" data-edit-facial="${s.id}">Editar facial</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
  if($('studentRows').innerHTML!==studentTableHtml)$('studentRows').innerHTML=studentTableHtml;
  $('attendanceRows').innerHTML=[...data.attendance].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map(a=>`<tr><td>${esc(name(a.student_id))}</td><td>${new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})}</td><td>${a.source==='facial'?'Facial':'Manual'}</td><td>${a.appointment_id?'Aula vinculada':'Conferir'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nenhuma presença.</td></tr>';
  $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
@@ -312,6 +312,43 @@ historyField('vitaleHistoryForm').onsubmit=async e=>{
   historyDialog.close();notify(isPresence?'Presença confirmada no histórico.':'Falta confirmada no histórico.');
  }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';notify('Falha no registro: '+error.textContent);}
  finally{save.disabled=false;}
+};
+
+const editFacialDialog=document.createElement('dialog');
+editFacialDialog.style.cssText='width:min(430px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
+editFacialDialog.innerHTML='<form id="editFacialForm" style="display:grid;gap:14px"><h3>Editar ID facial</h3><p id="editFacialName"></p><p id="editFacialCurrent"></p><label>ID no Control iD<input id="editFacialId" type="number" min="1" step="1" required style="display:block;width:100%;padding:10px"></label><p style="font-size:13px">Confirme o ID no aparelho. IDs já vinculados a outros alunos serão bloqueados. A biometria do equipamento não será alterada.</p><p id="editFacialError" role="alert" style="color:#b42318"></p><div style="display:flex;gap:10px"><button type="button" class="secondary" id="editFacialCancel">Cancelar</button><button id="editFacialSave" type="submit">Salvar ID facial</button></div></form>';
+document.body.append(editFacialDialog);
+let editFacialStudent=null;
+$('editFacialCancel').onclick=()=>editFacialDialog.close();
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('[data-edit-facial]');if(!b)return;
+ if(staff?.role!=='admin')return notify('Acesso restrito ao administrador.');
+ const s=data.students.find(s=>s.id===b.dataset.editFacial);if(!s)return;
+ editFacialStudent=s.id;
+ $('editFacialName').textContent=s.name;
+ $('editFacialCurrent').textContent='Consultando vínculo atual…';
+ $('editFacialId').value='';
+ $('editFacialError').textContent='';
+ editFacialDialog.showModal();
+ try{
+  const rows=await api('/rest/v1/rpc/vitale_facial_roster',{method:'POST',body:'{}'});
+  const current=(Array.isArray(rows)?rows:[]).find(r=>r.student_id===s.id);
+  $('editFacialCurrent').textContent=current?'ID atual: '+current.user_id:'Sem ID facial vinculado';
+  if(current)$('editFacialId').value=current.user_id;
+ }catch(err){$('editFacialError').textContent='Falha ao consultar: '+err.message;}
+});
+$('editFacialForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(staff?.role!=='admin'||!editFacialStudent)return;
+ const id=Number($('editFacialId').value);
+ if(!Number.isSafeInteger(id)||id<1){$('editFacialError').textContent='Informe um ID inteiro e positivo.';return;}
+ $('editFacialSave').disabled=true;
+ try{
+  await api('/rest/v1/rpc/vitale_update_student_facial',{method:'POST',body:JSON.stringify({p_student_id:editFacialStudent,p_user_id:id})});
+  editFacialDialog.close();await loadFacialRoster();
+  notify('ID facial atualizado. Confira o vínculo no equipamento.');
+ }catch(err){$('editFacialError').textContent=err.message||'Falha ao salvar.';}
+ finally{$('editFacialSave').disabled=false;}
 };
 function renderClasses(){
  const allowed=staff?.role==='professional'?new Set(data.appointments.filter(a=>a.professional_id===session?.user?.id).map(a=>a.student_id).concat(data.students.filter(s=>s.responsible_professional_id===session?.user?.id).map(s=>s.id))):null;
