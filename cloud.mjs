@@ -137,7 +137,18 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>{openStudent();};
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
-$('studentForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(e.target));if(!d.name.trim())throw Error('Informe o nome.');if(d.activity==='Pilates'&&d.pilates_plan?.startsWith('monthly_')&&!d.plan_started_on)throw Error('Informe o início do pacote mensal.');if(d.plan_expires_on&&d.plan_started_on&&d.plan_expires_on<d.plan_started_on)throw Error('O vencimento não pode ser anterior ao início.');if(d.birth_date&&(d.birth_date>day(new Date())||d.birth_date<'1900-01-01'))throw Error('Confira a data de nascimento.');const body={name:d.name.trim(),phone:d.phone.trim()||null,activity:d.activity,birth_date:d.birth_date||null,address:d.address.trim()||null,health_conditions:d.health_conditions.trim()||null,pilates_plan:d.activity==='Pilates'?(d.pilates_plan||null):null,pilates_reason:d.activity==='Pilates'?(d.pilates_reason.trim()||null):null,responsible_professional_id:d.responsible_professional_id||null,plan_started_on:d.activity==='Pilates'?(d.plan_started_on||null):null,plan_expires_on:d.activity==='Pilates'?(d.plan_expires_on||null):null};await api('/rest/v1/students'+(d.id?'?id=eq.'+encodeURIComponent(d.id):''),{method:d.id?'PATCH':'POST',body:JSON.stringify(body)});await reload();e.target.reset();$('studentDialog').close();notify(d.id?'Cadastro atualizado.':'Aluno salvo no banco.');}catch(err){notify(err.message);}finally{button.disabled=false;}};
+$('studentForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(e.target));if(!d.name.trim())throw Error('Informe o nome.');if(d.activity==='Pilates'&&d.pilates_plan?.startsWith('monthly_')&&!d.plan_started_on)throw Error('Informe o início do pacote mensal.');if(d.plan_expires_on&&d.plan_started_on&&d.plan_expires_on<d.plan_started_on)throw Error('O vencimento não pode ser anterior ao início.');if(d.birth_date&&(d.birth_date>day(new Date())||d.birth_date<'1900-01-01'))throw Error('Confira a data de nascimento.');const body={name:d.name.trim(),phone:d.phone.trim()||null,activity:d.activity,birth_date:d.birth_date||null,address:d.address.trim()||null,health_conditions:d.health_conditions.trim()||null,pilates_plan:d.activity==='Pilates'?(d.pilates_plan||null):null,pilates_reason:d.activity==='Pilates'?(d.pilates_reason.trim()||null):null,responsible_professional_id:d.responsible_professional_id||null,plan_started_on:d.activity==='Pilates'?(d.plan_started_on||null):null,plan_expires_on:d.activity==='Pilates'?(d.plan_expires_on||null):null};const existing=d.id?data.students.find(x=>x.id===d.id):null;
+if(d.id&&!existing)throw Error('Aluno não encontrado. Atualize a página.');
+const nameChanged=!!existing&&existing.name!==body.name;
+let confirmation=null;
+if(nameChanged){
+ if(staff?.role!=='admin')throw Error('Somente o administrador pode alterar o nome de um aluno.');
+ confirmation=prompt('ATENÇÃO: você está alterando a identidade de '+existing.name+' para '+body.name+'. Para autorizar, digite exatamente ALTERAR:');
+ if(confirmation!=='ALTERAR')throw Error('Alteração de nome cancelada. Nenhum dado foi salvo.');
+ body.name=existing.name;
+}
+await api('/rest/v1/students'+(d.id?'?id=eq.'+encodeURIComponent(d.id):''),{method:d.id?'PATCH':'POST',body:JSON.stringify(body)});
+if(nameChanged)await api('/rest/v1/rpc/vitale_confirm_student_name_change',{method:'POST',body:JSON.stringify({p_student_id:d.id,p_expected_name:existing.name,p_new_name:d.name.trim(),p_confirmation:confirmation})});await reload();e.target.reset();$('studentDialog').close();notify(d.id?'Cadastro atualizado.':'Aluno salvo no banco.');}catch(err){notify(err.message);}finally{button.disabled=false;}};
 $('appointmentForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.target));const start=new Date(`${d.day}T${d.time}:00-03:00`);await api('/rest/v1/appointments',{method:'POST',body:JSON.stringify({student_id:d.studentId,professional_id:d.professional,starts_at:start.toISOString(),ends_at:new Date(+start+3600000).toISOString(),activity:d.activity})});await reload();e.target.reset();$('appointmentDialog').close();notify('Agendamento salvo.');}catch(err){notify(err.message);}};
 document.addEventListener('click',async e=>{
  const btn=e.target.closest('[data-absence-action]');if(!btn)return;
@@ -360,7 +371,9 @@ $('editFacialForm').onsubmit=async e=>{
  if(!Number.isSafeInteger(id)||id<1){$('editFacialError').textContent='Informe um ID inteiro e positivo.';return;}
  $('editFacialSave').disabled=true;
  try{
-  await api('/rest/v1/rpc/vitale_update_student_facial',{method:'POST',body:JSON.stringify({p_student_id:editFacialStudent,p_user_id:id})});
+  const confirmation=prompt('ATENÇÃO: a alteração do ID facial exige autorização. Digite exatamente ALTERAR:');
+  if(confirmation!=='ALTERAR')throw Error('Alteração facial cancelada.');
+  await api('/rest/v1/rpc/vitale_update_student_facial',{method:'POST',body:JSON.stringify({p_student_id:editFacialStudent,p_user_id:id,p_confirmation:confirmation})});
   editFacialDialog.close();await loadFacialRoster();
   notify('ID facial atualizado. Confira o vínculo no equipamento.');
  }catch(err){$('editFacialError').textContent=err.message||'Falha ao salvar.';}
