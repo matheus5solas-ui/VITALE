@@ -60,14 +60,30 @@ function renderFacialRoster(){
  const linked=facialRoster||[];
  const byStudent=new Map(linked.filter(r=>r.student_id).map(r=>[r.student_id,r]));
  const professionals=data.professionals.filter(p=>p.active);
- const linkedStudents=data.students.filter(s=>byStudent.has(s.id));
+ const activeStudents=data.students.filter(s=>s.active).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
  $('faceProfessionalCount').textContent=professionals.length;
- $('faceStudentCount').textContent=linkedStudents.length;
+ $('faceStudentCount').textContent=activeStudents.length;
  const person=(person,extra,status)=>`<div class="facial-person"><strong>${esc(person.name)}</strong><small>${esc(extra)}</small><span class="facial-pill">${esc(status)}</span></div>`;
  pro.innerHTML=professionals.map(p=>person(p,'ID facial: não vinculado','Cadastro facial não confirmado')).join('')||'<p class="empty">Nenhum profissional ativo.</p>';
- stu.innerHTML=linkedStudents.map(s=>{const b=byStudent.get(s.id);return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">${person(s,`ID Control iD: ${b.user_id} · Aparelho: ${b.device_name||'Cadastrado'}`,b.active?'Vínculo ativo · biometria não verificada':'Vínculo inativo')}${staff?.role==='admin'?`<button type="button" class="secondary" data-edit-facial="${s.id}">Editar ID facial</button>`:''}</div>`;}).join('')||(facialLoading?'<p class="empty">Consultando vínculos…</p>':'<p class="empty">Nenhum aluno com vínculo facial disponível.</p>');
- $('faceStatus').textContent=facialLoading?'Atualizando vínculos…':facialRosterError?'Não foi possível consultar os vínculos faciais: '+facialRosterError:'Os vínculos exibidos vêm do Supabase. A lista não verifica a biometria armazenada no Control iD em tempo real.';
+ stu.innerHTML=activeStudents.map(s=>{
+  const b=byStudent.get(s.id);
+  const detail=b?`ID Control iD: ${b.user_id} · Aparelho: ${b.device_name||'Cadastrado'}`:'Nenhum ID facial vinculado';
+  const status=b?(b.active?'Vínculo ativo · biometria não verificada':'Vínculo inativo'):'Facial pendente';
+  const action=b?(staff?.role==='admin'?`<button type="button" class="secondary" data-edit-facial="${s.id}">Editar ID facial</button>`:''):(['admin','reception'].includes(staff?.role)?`<button type="button" class="secondary" data-link-facial-student="${s.id}">Vincular ID facial</button>`:'');
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">${person(s,detail,status)}${action}</div>`;
+ }).join('')||(facialLoading?'<p class="empty">Consultando alunos…</p>':'<p class="empty">Nenhum aluno ativo disponível.</p>');
+ $('faceStatus').textContent=facialLoading?'Atualizando vínculos…':facialRosterError?'Não foi possível consultar os vínculos faciais: '+facialRosterError:'Alunos sem ID facial aparecem como pendentes. A lista não verifica a biometria armazenada no Control iD em tempo real.';
 }
+document.addEventListener('click',e=>{
+ const btn=e.target.closest('[data-link-facial-student]');if(!btn)return;
+ if(!['admin','reception'].includes(staff?.role))return;
+ const sel=$('faceLinkStudent');if(!sel)return;
+ sel.value=btn.dataset.linkFacialStudent;
+ if(sel.value!==btn.dataset.linkFacialStudent){$('faceLinkMessage').textContent='Atualize os vínculos antes de cadastrar este aluno.';return;}
+ $('faceLinkId').focus();
+ $('faceLinkId').scrollIntoView({behavior:'smooth',block:'center'});
+});
+
 $('refreshFace').onclick=()=>loadFacialRoster();
 function refreshFacialStudentOptions(){
  const sel=$('faceLinkStudent');if(!sel)return;
