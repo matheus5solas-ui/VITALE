@@ -305,6 +305,15 @@ historyField('vitaleHistoryDate').addEventListener('input',e=>{
  while(pos<input.value.length&&count<digitsBefore){if(/\d/.test(input.value[pos]))count++;pos++;}
  input.setSelectionRange(pos,pos);
 });
+document.addEventListener('input',e=>{
+ if(e.target?.id==='vitaleHistoryDate')e.target.value=formatHistoryDate(e.target.value);
+},true);
+document.addEventListener('change',e=>{
+ if(e.target?.id==='vitaleHistoryDate')e.target.value=formatHistoryDate(e.target.value);
+},true);
+document.addEventListener('focusout',e=>{
+ if(e.target?.id==='vitaleHistoryDate')e.target.value=formatHistoryDate(e.target.value);
+},true);
 historyField('vitaleHistorySave').addEventListener('click',()=>{
  historyField('vitaleHistoryError').textContent='Validando e enviando presença...';
 });
