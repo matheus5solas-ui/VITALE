@@ -324,7 +324,7 @@ async function handleHistorySubmit(e){
  if(!historyContext)return;
  const {id,isPresence}=historyContext;
  const rawDate=historyField('vitaleHistoryDate').value.trim();
- const matchDate=/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/.exec(rawDate);
+ const matchDate=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(rawDate);
  const date=matchDate?matchDate[3]+'-'+matchDate[2]+'-'+matchDate[1]:'';
  const parsedDate=date?new Date(date+'T12:00:00Z'):null;
  const validDate=parsedDate&&!Number.isNaN(parsedDate.getTime())&&parsedDate.toISOString().slice(0,10)===date;
