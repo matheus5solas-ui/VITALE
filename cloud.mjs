@@ -381,18 +381,26 @@ async function handleHistorySubmit(e){
  e.preventDefault();
  if(!historyContext){historyField('vitaleHistoryError').textContent='Aluno não selecionado. Feche e abra o formulário.';return;}
  const {id,isPresence}=historyContext;
- const rawDate=formatHistoryDate(historyField('vitaleHistoryDate').value.trim());
- historyField('vitaleHistoryDate').value=rawDate;
- const matchDate=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(rawDate);
- const date=matchDate?matchDate[3]+'-'+matchDate[2]+'-'+matchDate[1]:'';
- const parsedDate=date?new Date(date+'T12:00:00Z'):null;
- const validDate=parsedDate&&!Number.isNaN(parsedDate.getTime())&&parsedDate.toISOString().slice(0,10)===date;
+ const dateInput=historyField('vitaleHistoryDate');
+ const dateOriginal=String(dateInput.value||'').trim();
+ // Aceita DD/MM/AAAA, D/M/AAAA, DDMMAAAA e AAAA-MM-DD sem depender do locale do navegador.
+ const dateMatch=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(dateOriginal)
+  || /^(\d{2})(\d{2})(\d{4})$/.exec(dateOriginal.replace(/\D/g,''));
+ const isoMatch=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOriginal);
+ const year=Number(isoMatch?isoMatch[1]:dateMatch?.[3]);
+ const month=Number(isoMatch?isoMatch[2]:dateMatch?.[2]);
+ const dayOfMonth=Number(isoMatch?isoMatch[3]:dateMatch?.[1]);
+ const calendarDate=new Date(Date.UTC(year,month-1,dayOfMonth,12));
+ const validDate=Boolean((dateMatch||isoMatch)&&year>=1900&&year<=2100&&month>=1&&month<=12&&dayOfMonth>=1&&dayOfMonth<=31
+  &&calendarDate.getUTCFullYear()===year&&calendarDate.getUTCMonth()+1===month&&calendarDate.getUTCDate()===dayOfMonth);
+ const date=validDate?[year,String(month).padStart(2,'0'),String(dayOfMonth).padStart(2,'0')].join('-'):'';
+ if(validDate)dateInput.value=String(dayOfMonth).padStart(2,'0')+'/'+String(month).padStart(2,'0')+'/'+year;
  const time=historyField('vitaleHistoryTime').value;
  const status=historyField('vitaleHistoryStatus').value;
  const makeupDate=status==='made_up'?historyField('vitaleHistoryMakeup').value:null;
  const note=historyField('vitaleHistoryNote').value;
  const error=historyField('vitaleHistoryError');
- if(!validDate){error.textContent='Informe uma data válida no formato DD/MM/AAAA (ex.: 19/10/2026).';notify(error.textContent);return;}
+ if(!validDate){error.textContent='Data inválida: '+dateOriginal+'. Informe DD/MM/AAAA (ex.: 19/10/2026).';notify(error.textContent);return;}
  if(isPresence&&!time){error.textContent='Informe o horário real da presença.';notify(error.textContent);return;}
  if(isPresence){
   const student=data.students.find(s=>s.id===id);
