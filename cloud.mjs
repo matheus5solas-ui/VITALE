@@ -318,9 +318,13 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
  historyDialog.showModal();
 });
+historyField('vitaleHistorySave').addEventListener('click',()=>{
+ const el=historyField('vitaleHistoryError');
+ el.textContent='Processando solicitação...';
+});
 historyField('vitaleHistoryForm').onsubmit=async e=>{
  e.preventDefault();
- if(!historyContext)return;
+ if(!historyContext){historyField('vitaleHistoryError').textContent='Formulário sem aluno selecionado. Feche e abra novamente.';return;}
  const {id,isPresence}=historyContext;
  const date=historyField('vitaleHistoryDate').value;
  const time=historyField('vitaleHistoryTime').value;
@@ -343,7 +347,9 @@ historyField('vitaleHistoryForm').onsubmit=async e=>{
   }
  }
  if(!isPresence&&status==='made_up'&&!makeupDate){error.textContent='Selecione a data da reposição.';return;}
- const save=historyField('vitaleHistorySave');save.disabled=true;
+ const save=historyField('vitaleHistorySave');
+ error.textContent='Enviando registro para validação no banco...';
+ save.disabled=true;
  try{
   let presenceResult=null;
   if(isPresence){
