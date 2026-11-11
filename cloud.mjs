@@ -172,7 +172,27 @@ document.addEventListener('click',async e=>{
  catch(err){notify(err.message||'Falha ao excluir aluno.');}
  finally{btn.disabled=false;}
 });
-document.addEventListener('click',async e=>{const id=e.target.dataset.present;if(!id)return;const a=data.appointments.find(a=>a.id===id);if(!a)return;if(!confirm('Confirmar presença manual de '+name(a.student_id)+' nesta aula?'))return;e.target.disabled=true;try{await api('/rest/v1/attendance',{method:'POST',body:JSON.stringify({student_id:a.student_id,appointment_id:a.id,occurred_at:new Date().toISOString(),source:'manual',recorded_by:staff.user_id})});await reload();notify('Presença confirmada.');}catch(err){notify(err.message);}finally{e.target.disabled=false;}});
+document.addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-present]');if(!btn)return;
+ const a=data.appointments.find(a=>a.id===btn.dataset.present);if(!a)return;
+ const student=data.students.find(s=>s.id===a.student_id);if(!student)return;
+ const local=new Date(a.starts_at).toLocaleString('sv-SE',{timeZone:'America/Fortaleza'});
+ const classDate=local.slice(0,10),classTime=local.slice(11,19);
+ if(student.plan_started_on&&student.plan_expires_on&&(classDate<student.plan_started_on||classDate>student.plan_expires_on)){
+  return notify('Não foi registrada: a aula está fora da vigência do pacote. Corrija as datas do plano do aluno antes de confirmar.');
+ }
+ if(!confirm('Confirmar presença manual de '+name(a.student_id)+' na aula de '+classDate+' às '+classTime.slice(0,5)+'?'))return;
+ btn.disabled=true;
+ try{
+  const result=await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:a.student_id,p_date:classDate,p_time:classTime})});
+  if(result?.saved!==true)throw Error('O servidor não confirmou a gravação da presença.');
+  await reload();
+  const saved=data.attendance.some(t=>t.id===result.attendance_id&&t.student_id===a.student_id&&day(t.occurred_at)===classDate);
+  if(!saved)throw Error('O servidor retornou sucesso, mas a presença não foi localizada no histórico após atualização.');
+  notify('Presença de '+classDate+' confirmada e verificada no histórico.');
+ }catch(err){notify('Presença NÃO confirmada: '+(err.message||'erro ao salvar'));}
+ finally{btn.disabled=false;}
+});
 $('date').onchange=render;$('search').oninput=render;$('refresh').onclick=()=>reload().catch(e=>notify(e.message));
 async function restoreSession(){
  try{const saved=JSON.parse(sessionStorage.getItem(sessionKey)||'null');if(!saved?.access_token||!saved?.refresh_token||!saved?.user?.id)return;session=saved;$('loginMessage').textContent='Restaurando sessão…';await enterWorkspace();$('loginMessage').textContent='';}
