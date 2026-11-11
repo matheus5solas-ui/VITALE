@@ -292,6 +292,22 @@ document.body.append(historyDialog);
 historyDialog.querySelector('form').addEventListener('submit',handleHistorySubmit);
 let historyContext=null;
 const historyField=id=>document.getElementById(id);
+const formatHistoryDate=value=>{
+ const digits=String(value||'').replace(/\\D/g,'').slice(0,8);
+ return [digits.slice(0,2),digits.slice(2,4),digits.slice(4,8)].filter(Boolean).join('/');
+};
+historyField('vitaleHistoryDate').addEventListener('input',e=>{
+ const input=e.currentTarget;
+ const before=input.selectionStart||0;
+ const digitsBefore=input.value.slice(0,before).replace(/\\D/g,'').length;
+ input.value=formatHistoryDate(input.value);
+ let pos=0,count=0;
+ while(pos<input.value.length&&count<digitsBefore){if(/\\d/.test(input.value[pos]))count++;pos++;}
+ input.setSelectionRange(pos,pos);
+});
+historyField('vitaleHistorySave').addEventListener('click',()=>{
+ historyField('vitaleHistoryError').textContent='Validando e enviando presença...';
+});
 historyField('vitaleHistoryCancel').onclick=()=>historyDialog.close();
 historyField('vitaleHistoryStatus').onchange=()=>{
  historyField('vitaleHistoryMakeupWrap').style.display=historyField('vitaleHistoryStatus').value==='made_up'?'grid':'none';
@@ -321,9 +337,10 @@ document.addEventListener('click',e=>{
 });
 async function handleHistorySubmit(e){
  e.preventDefault();
- if(!historyContext)return;
+ if(!historyContext){historyField('vitaleHistoryError').textContent='Aluno não selecionado. Feche e abra o formulário.';return;}
  const {id,isPresence}=historyContext;
- const rawDate=historyField('vitaleHistoryDate').value.trim();
+ const rawDate=formatHistoryDate(historyField('vitaleHistoryDate').value.trim());
+ historyField('vitaleHistoryDate').value=rawDate;
  const matchDate=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(rawDate);
  const date=matchDate?matchDate[3]+'-'+matchDate[2]+'-'+matchDate[1]:'';
  const parsedDate=date?new Date(date+'T12:00:00Z'):null;
@@ -348,7 +365,9 @@ async function handleHistorySubmit(e){
   }
  }
  if(!isPresence&&status==='made_up'&&!makeupDate){error.textContent='Selecione a data da reposição.';return;}
- const save=historyField('vitaleHistorySave');save.disabled=true;
+ const save=historyField('vitaleHistorySave');
+ error.textContent='Enviando registro ao Supabase...';
+ save.disabled=true;
  try{
   let presenceResult=null;
   if(isPresence){
