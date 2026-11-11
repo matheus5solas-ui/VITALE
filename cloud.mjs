@@ -314,13 +314,29 @@ document.addEventListener('change',e=>{
 document.addEventListener('focusout',e=>{
  if(e.target?.id==='vitaleHistoryDate')e.target.value=formatHistoryDate(e.target.value);
 },true);
-historyField('vitaleHistorySave').addEventListener('click',async e=>{
+// Captura no window antes de handlers globais, mesmo se o dialogo for recriado.
+let historySubmissionInFlight=false;
+window.addEventListener('click',async e=>{
+ const button=e.target instanceof Element?e.target.closest('#vitaleHistoryCancel,#vitaleHistorySave'):null;
+ if(!button||!button.closest('#vitaleHistoryDialog'))return;
+ e.preventDefault();
+ e.stopPropagation();
+ if(button.id==='vitaleHistoryCancel'){
+  if(historySubmissionInFlight)return;
+  historyDialog.close();
+  return;
+ }
+ if(historySubmissionInFlight)return;
  const error=historyField('vitaleHistoryError');
- error.textContent='Confirmacao recebida. Validando registro...';
+ error.textContent='Clique recebido. Validando e enviando registro...';
+ historySubmissionInFlight=true;
  try{await handleHistorySubmit(e);}
- catch(err){error.textContent='Erro inesperado na confirmacao: '+(err?.message||String(err));notify(error.textContent);console.error('Vitale registro manual',err);}
-});
-historyField('vitaleHistoryCancel').onclick=()=>historyDialog.close();
+ catch(err){
+  error.textContent='Erro inesperado: '+(err?.message||String(err));
+  console.error('Vitale registro manual',err);
+ }
+ finally{historySubmissionInFlight=false;}
+},true);
 historyField('vitaleHistoryStatus').onchange=()=>{
  historyField('vitaleHistoryMakeupWrap').style.display=historyField('vitaleHistoryStatus').value==='made_up'?'grid':'none';
 };
