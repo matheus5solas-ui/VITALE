@@ -381,7 +381,16 @@ $('editFacialForm').onsubmit=async e=>{
 };
 function renderClasses(){
  const allowed=staff?.role==='professional'?new Set(data.appointments.filter(a=>a.professional_id===session?.user?.id).map(a=>a.student_id).concat(data.students.filter(s=>s.responsible_professional_id===session?.user?.id).map(s=>s.id))):null;
- const rows=data.students.filter(s=>(!allowed||allowed.has(s.id))&&s.active&&s.activity==='Pilates'&&s.name.toLowerCase().includes(($('classSearch')?.value||'').toLowerCase()));
+ const eligible=data.students.filter(s=>(!allowed||allowed.has(s.id))&&s.active&&s.activity==='Pilates').sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ const studentFilter=$('classStudentFilter');
+ const previousSelection=studentFilter.value;
+ const nameCounts=new Map();
+ eligible.forEach(s=>nameCounts.set(s.name,(nameCounts.get(s.name)||0)+1));
+ studentFilter.innerHTML='<option value="">Todos os alunos</option>'+eligible.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+(nameCounts.get(s.name)>1?' — '+(s.plan_started_on||'sem início')+' / '+(s.plan_expires_on||'sem vencimento'):'')+'</option>').join('');
+ studentFilter.value=eligible.some(s=>s.id===previousSelection)?previousSelection:'';
+ const selectedStudentId=studentFilter.value;
+ const query=($('classSearch')?.value||'').trim().toLocaleLowerCase('pt-BR');
+ const rows=eligible.filter(s=>(!selectedStudentId||s.id===selectedStudentId)&&s.name.toLocaleLowerCase('pt-BR').includes(query));
  $('classRows').innerHTML=rows.map(s=>{
  const appointments=classAppointments(s), attendance=classAttendance(s);
  const weeklyLimit={monthly_1:1,monthly_2:2,monthly_3:3}[s.pilates_plan];
@@ -451,6 +460,8 @@ $('teacherClassForm').onsubmit=async e=>{
  }catch(error){notify(error.message);}finally{save.disabled=false;}
 };
 $('classSearch').oninput=renderClasses;
+$('classStudentFilter').onchange=renderClasses;
+$('classClearFilter').onclick=()=>{$('classSearch').value='';$('classStudentFilter').value='';renderClasses();};
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-receipt]');if(!b)return;
  const s=data.students.find(s=>s.id===b.dataset.printReceipt);if(!s)return;
