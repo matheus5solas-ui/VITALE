@@ -326,16 +326,30 @@ window.addEventListener('click',async e=>{
   historyDialog.close();
   return;
  }
- if(historySubmissionInFlight)return;
+ if(historySubmissionInFlight){
+  historyField('vitaleHistoryError').textContent='Registro anterior em andamento. Aguarde a resposta antes de tentar novamente.';
+  return;
+ }
  const error=historyField('vitaleHistoryError');
- error.textContent='Clique recebido. Validando e enviando registro...';
+ const originalLabel=button.textContent;
+ error.textContent='Clique recebido. Iniciando validacao...';
+ button.textContent='Processando...';
+ button.disabled=true;
  historySubmissionInFlight=true;
+ console.info('[Vitale] Confirmar acionado; iniciando validacao de presenca manual');
  try{await handleHistorySubmit(e);}
  catch(err){
   error.textContent='Erro inesperado: '+(err?.message||String(err));
-  console.error('Vitale registro manual',err);
+  console.error('[Vitale] Falha no registro manual',err);
  }
- finally{historySubmissionInFlight=false;}
+ finally{
+  historySubmissionInFlight=false;
+  button.disabled=false;
+  button.textContent=originalLabel;
+  if(historyDialog.open&&error.textContent==='Clique recebido. Iniciando validacao...'){
+   error.textContent='A rotina retornou sem confirmar o registro. Confira o Console e a aba Network.';
+  }
+ }
 },true);
 historyField('vitaleHistoryStatus').onchange=()=>{
  historyField('vitaleHistoryMakeupWrap').style.display=historyField('vitaleHistoryStatus').value==='made_up'?'grid':'none';
