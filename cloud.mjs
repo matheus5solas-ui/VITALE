@@ -286,10 +286,10 @@ document.addEventListener('click',e=>{
 const historyDialog=document.createElement('dialog');
 historyDialog.id='vitaleHistoryDialog';
 historyDialog.style.cssText='width:min(440px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
-historyDialog.innerHTML='<form id="vitaleHistoryForm" novalidate style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="submit">Confirmar</button></div></form>';
+historyDialog.innerHTML='<form id="vitaleHistoryForm" novalidate style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="button">Confirmar</button></div></form>';
 document.body.append(historyDialog);
 // Vincula o envio diretamente ao formulario. Nao depende de onsubmit (que pode ficar nulo).
-historyDialog.querySelector('form').addEventListener('submit',handleHistorySubmit);
+historyDialog.querySelector('form').addEventListener('submit',e=>{e.preventDefault();handleHistorySubmit(e);});
 let historyContext=null;
 const historyField=id=>document.getElementById(id);
 const formatHistoryDate=value=>{
@@ -314,8 +314,11 @@ document.addEventListener('change',e=>{
 document.addEventListener('focusout',e=>{
  if(e.target?.id==='vitaleHistoryDate')e.target.value=formatHistoryDate(e.target.value);
 },true);
-historyField('vitaleHistorySave').addEventListener('click',()=>{
- historyField('vitaleHistoryError').textContent='Validando e enviando presença...';
+historyField('vitaleHistorySave').addEventListener('click',async e=>{
+ const error=historyField('vitaleHistoryError');
+ error.textContent='Confirmacao recebida. Validando registro...';
+ try{await handleHistorySubmit(e);}
+ catch(err){error.textContent='Erro inesperado na confirmacao: '+(err?.message||String(err));notify(error.textContent);console.error('Vitale registro manual',err);}
 });
 historyField('vitaleHistoryCancel').onclick=()=>historyDialog.close();
 historyField('vitaleHistoryStatus').onchange=()=>{
