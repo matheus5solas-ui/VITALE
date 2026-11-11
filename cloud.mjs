@@ -293,16 +293,16 @@ historyDialog.querySelector('form').addEventListener('submit',handleHistorySubmi
 let historyContext=null;
 const historyField=id=>document.getElementById(id);
 const formatHistoryDate=value=>{
- const digits=String(value||'').replace(/\\D/g,'').slice(0,8);
+ const digits=String(value||'').replace(/\D/g,'').slice(0,8);
  return [digits.slice(0,2),digits.slice(2,4),digits.slice(4,8)].filter(Boolean).join('/');
 };
 historyField('vitaleHistoryDate').addEventListener('input',e=>{
  const input=e.currentTarget;
  const before=input.selectionStart||0;
- const digitsBefore=input.value.slice(0,before).replace(/\\D/g,'').length;
+ const digitsBefore=input.value.slice(0,before).replace(/\D/g,'').length;
  input.value=formatHistoryDate(input.value);
  let pos=0,count=0;
- while(pos<input.value.length&&count<digitsBefore){if(/\\d/.test(input.value[pos]))count++;pos++;}
+ while(pos<input.value.length&&count<digitsBefore){if(/\d/.test(input.value[pos]))count++;pos++;}
  input.setSelectionRange(pos,pos);
 });
 historyField('vitaleHistorySave').addEventListener('click',()=>{
