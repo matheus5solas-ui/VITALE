@@ -288,15 +288,8 @@ historyDialog.id='vitaleHistoryDialog';
 historyDialog.style.cssText='width:min(440px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
 historyDialog.innerHTML='<form id="vitaleHistoryForm" novalidate style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="date" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="submit">Confirmar</button></div></form>';
 document.body.append(historyDialog);
-// Impede navegacao nativa mesmo se outra inicializacao falhar antes do handler principal.
-historyDialog.querySelector('form').addEventListener('submit',e=>{
- e.preventDefault();
- if(typeof historyDialog.querySelector('form').onsubmit!=='function'){
-  const message='Registro não enviado: rotina de confirmação indisponível. Atualize a página e informe o administrador.';
-  historyDialog.querySelector('#vitaleHistoryError').textContent=message;
-  notify(message);
- }
-},true);
+// Vincula o envio diretamente ao formulario. Nao depende de onsubmit (que pode ficar nulo).
+historyDialog.querySelector('form').addEventListener('submit',handleHistorySubmit);
 let historyContext=null;
 const historyField=id=>document.getElementById(id);
 historyField('vitaleHistoryCancel').onclick=()=>historyDialog.close();
@@ -327,7 +320,7 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
  historyDialog.showModal();
 });
-historyField('vitaleHistoryForm').onsubmit=async e=>{
+async function handleHistorySubmit(e){
  e.preventDefault();
  if(!historyContext)return;
  const {id,isPresence}=historyContext;
@@ -371,7 +364,7 @@ historyField('vitaleHistoryForm').onsubmit=async e=>{
   historyDialog.close();notify(isPresence?'Presença confirmada no histórico.':'Falta confirmada no histórico.');
  }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';notify('Falha no registro: '+error.textContent);}
  finally{save.disabled=false;}
-};
+}
 
 const editFacialDialog=document.createElement('dialog');
 editFacialDialog.style.cssText='width:min(430px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
