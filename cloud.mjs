@@ -32,6 +32,12 @@ async function api(path,options={},retry=true){
  if(response.status===401){if(retry){await refreshSession();return api(path,options,false);}logout();throw Error('Sua sessão expirou. Entre novamente.');}
  if(!response.ok&&path.startsWith('/functions/')){const error=await response.json().catch(()=>({}));throw Error(error.message||'Não foi possível concluir esta operação.');}
  if(!response.ok&&path.startsWith('/rest/v1/attendance')){const error=await response.json().catch(()=>({}));throw Error(error.code==='23505'?'Esta aula já tem presença registrada.':error.message?.includes('Pacote')?error.message:'Não foi possível confirmar a presença. Confira o agendamento e o saldo.');}
+ if(!response.ok&&path==='/rest/v1/rpc/vitale_record_historical_presence'){
+  const error=await response.json().catch(()=>({}));
+  const known=['Faça login para registrar a presença','Aluno não encontrado','Sem permissão','Data e horário devem estar dentro do pacote','Presença futura não permitida','Já existe presença nessa data','Pacote esgotado','Defina o professor responsável antes de registrar presença','Confira o agendamento','Autor inválido','Presença já registrada','Aluno indisponível'];
+  const message=known.find(m=>error.message?.includes(m));
+  throw Error(message||('Falha ao registrar presença histórica (HTTP '+response.status+(error.code?', código '+error.code:'')+'). Informe este código ao administrador.'));
+ }
  if(!response.ok)throw Error(response.status===403?'Seu perfil não permite esta ação.':response.status===409?'Já existe um registro com esses dados.':'Não foi possível salvar ou carregar. Tente novamente.');
  return response.status===204?null:response.json();
 }
@@ -326,11 +332,15 @@ historyField('vitaleHistoryForm').onsubmit=async e=>{
  if(!isPresence&&status==='made_up'&&!makeupDate){error.textContent='Selecione a data da reposição.';return;}
  const save=historyField('vitaleHistorySave');save.disabled=true;
  try{
-  if(isPresence)await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:id,p_date:date,p_time:time.length===5?time+':00':time})});
+  let presenceResult=null;
+  if(isPresence){
+   presenceResult=await api('/rest/v1/rpc/vitale_record_historical_presence',{method:'POST',body:JSON.stringify({p_student_id:id,p_date:date,p_time:time.length===5?time+':00':time})});
+   if(presenceResult?.saved!==true||!presenceResult.attendance_id)throw Error('O banco não confirmou a presença. Nenhum sucesso foi informado.');
+  }
   else await api('/rest/v1/rpc/vitale_set_class_adjustment',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:date,p_status:status,p_makeup_date:makeupDate,p_note:note})});
   await reload();
   if(isPresence){
-   const recorded=data.attendance.some(a=>a.student_id===id&&day(a.occurred_at)===date);
+   const recorded=data.attendance.some(a=>a.id===presenceResult.attendance_id&&a.student_id===id&&day(a.occurred_at)===date);
    if(!recorded)throw Error('O servidor respondeu, mas a presença não apareceu no histórico. Nenhuma confirmação foi emitida. Confira o registro facial antes de tentar novamente.');
   }else{
    const saved=(data.pilates_class_adjustments||[]).some(a=>a.student_id===id&&a.class_date===date&&a.status===status);
