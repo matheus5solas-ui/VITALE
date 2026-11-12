@@ -528,7 +528,14 @@ function renderClasses(){
  const weeklyDates=new Set(attendance.filter(t=>day(t.occurred_at)>=monday&&day(t.occurred_at)<=today).map(t=>day(t.occurred_at)));
  const window=packageWindow(s);const used=s.pilates_plan==='test_2'?attendance.length:weeklyLimit?packageAttendances(s).length:appointments.filter(a=>attendance.some(t=>t.appointment_id===a.id)).length;
  const total=s.pilates_plan==='test_2'?2:monthlyLessonLimit[s.pilates_plan]||appointments.length;
- const confirmedAbsences=(data.pilates_weekly_absences||[]).filter(w=>w.student_id===s.id&&w.status==='reviewed'&&(!window||w.week_start<=window.end&&w.week_end>=window.start)).reduce((n,w)=>n+w.missing_classes,0);
+ // Faltas manuais sao armazenadas em pilates_class_adjustments, nao apenas em weekly_absences.
+ // Nao desconta falta de presenca nem duplica um dia que ja tenha comparecimento.
+ const manualAbsenceDates=new Set((data.pilates_class_adjustments||[])
+  .filter(a=>a.student_id===s.id&&a.status==='absent'&&(!window||a.class_date>=window.start&&a.class_date<=window.end))
+  .map(a=>a.class_date)
+  .filter(d=>!attendance.some(t=>day(t.occurred_at)===d)));
+ const weeklyAbsenceCount=(data.pilates_weekly_absences||[]).filter(w=>w.student_id===s.id&&w.status==='reviewed'&&(!window||w.week_start<=window.end&&w.week_end>=window.start)).reduce((n,w)=>n+w.missing_classes,0);
+ const confirmedAbsences=Math.min(Math.max(0,total-used),Math.max(manualAbsenceDates.size,weeklyAbsenceCount));
  const exhausted=used>=total&&total>0;
  const testExhausted=exhausted;
  const dots=Array.from({length:total},(_,i)=>'<span aria-label="Aula '+(i+1)+': '+(testExhausted?'pacote esgotado':i<used?'presença confirmada':i<used+confirmedAbsences?'falta confirmada':'disponível')+'" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:'+(testExhausted?'#b42318':i<used?'#237b50':i<used+confirmedAbsences?'#eab308':'#e0e5e3')+';color:'+(i<used||testExhausted?'white':'#344840')+'">'+(i+1)+'</span>').join('');
