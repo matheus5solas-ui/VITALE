@@ -283,6 +283,9 @@ document.addEventListener('click',e=>{
  openWeekdaysDialog(s);
 });
 // Formulário de histórico: calendário nativo, horário e mensagens de erro visíveis.
+// Uma unica instancia do modal: remove instancias obsoletas da interface,
+// sem tocar em cadastros, presencas ou faltas armazenados no banco.
+document.querySelectorAll('dialog#vitaleHistoryDialog').forEach(d=>{if(d.open)d.close();d.remove();});
 const historyDialog=document.createElement('dialog');
 historyDialog.id='vitaleHistoryDialog';
 historyDialog.style.cssText='width:min(440px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
@@ -375,7 +378,10 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryNote').value=old?.note||'';
  historyField('vitaleHistoryError').textContent='';
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
- historyDialog.showModal();
+ // Evita sobreposicao de modais e duplicidade de IDs no DOM.
+ document.querySelectorAll('dialog[open]').forEach(d=>{if(d!==historyDialog)d.close();});
+ document.querySelectorAll('dialog#vitaleHistoryDialog').forEach(d=>{if(d!==historyDialog){if(d.open)d.close();d.remove();}});
+ if(!historyDialog.open)historyDialog.showModal();
 });
 async function handleHistorySubmit(e){
  e.preventDefault();
