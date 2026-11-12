@@ -614,16 +614,34 @@ document.addEventListener('click',e=>{
  const madeUp=adjustments.filter(a=>a.status==='made_up').length;
  const format=d=>d.split('-').reverse().join('/');
  const plan={monthly_1:'Mensal - 1x por semana',monthly_2:'Mensal - 2x por semana',monthly_3:'Mensal - 3x por semana',test_2:'Teste - 2 aulas'}[student.pilates_plan]||'Nao informado';
- const lines=['*VITALE - Fisioterapia e Pilates*','Comprovante de aulas','Aluno: '+student.name,'Plano: '+plan,
-  period?'Pacote: '+format(period.start)+' a '+format(period.end):'Pacote de teste',
-  'Aulas realizadas: '+used+' de '+total,'Aulas restantes: '+Math.max(0,total-used),
-  'Datas de presenca: '+(lessons.length?lessons.map(t=>format(day(t.occurred_at))).join(', '):'Nenhuma'),
-  'Faltas registradas: '+absentCount,
-  'Datas das faltas: '+(absenceDates.length?absenceDates.map(format).join(', '):'Nenhuma data individual registrada'),
-  ...(absentCount>absenceDates.length?['Outras '+(absentCount-absenceDates.length)+' falta(s) em resumo semanal.']:[]),
-  'Limite de reposicoes: '+limit,'Reposicoes registradas: '+madeUp,
-  'Reposicoes disponiveis: '+Math.max(0,Math.min(absentCount,limit)-madeUp),
-  'Registro de frequencia; nao comprova atendimento concluido.'];
+ const presenceDates=[...new Set(lessons.map(t=>day(t.occurred_at)))].sort();
+ const availableMakeups=Math.max(0,Math.min(absentCount,limit)-madeUp);
+ const lines=[
+  '🌿 *VITALE | Fisioterapia & Pilates*',
+  '📋 *RELATÓRIO DE AULAS*',
+  '',
+  '👤 *Aluno:* '+student.name,
+  '📅 *Plano:* '+plan,
+  period?'🗓️ *Vigência:* '+format(period.start)+' a '+format(period.end):'🗓️ *Pacote de teste*',
+  '',
+  '*PRESENÇAS*',
+  '✅ Realizadas: '+used+' de '+total,
+  '📚 Restantes: '+Math.max(0,total-used),
+  '📆 Datas: '+(presenceDates.length?presenceDates.map(format).join(', '):'Nenhuma'),
+  '',
+  '*FALTAS*',
+  '❌ Total: '+absentCount,
+  '📆 Datas: '+(absenceDates.length?absenceDates.map(format).join(', '):absentCount?'Sem datas individuais registradas':'Nenhuma'),
+  ...(absentCount>absenceDates.length?['ℹ️ '+(absentCount-absenceDates.length)+' falta(s) constam apenas no resumo semanal.']:[]),
+  '',
+  '*REPOSIÇÕES*',
+  '🔄 Limite permitido: '+limit,
+  '🔄 Registradas: '+madeUp,
+  '🔄 Disponíveis: '+availableMakeups,
+  '',
+  '💚 Obrigado por fazer parte da Vitale!',
+  '_Registro de frequência; não comprova atendimento concluído._'
+ ];
  const url='https://wa.me/'+phone+'?text='+encodeURIComponent(lines.join('\n'));
  // Navegacao na aba atual evita bloqueio de pop-up; o operador confirma o envio no WhatsApp Business.
  if(window.confirm('Abrir WhatsApp para '+student.name+'? Confira que o WhatsApp Web esta conectado a conta comercial da Vitale. O envio nao sera automatico.'))window.location.assign(url);
