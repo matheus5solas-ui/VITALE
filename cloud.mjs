@@ -607,10 +607,31 @@ document.addEventListener('click',e=>{
  const total=s.pilates_plan==='test_2'?2:monthlyLessonLimit[s.pilates_plan]||appointments.length;
  const used=s.pilates_plan==='test_2'?rows.length:new Set(rows.map(t=>day(t.occurred_at))).size;
  const plans={monthly_1:'Mensal - 1x por semana',monthly_2:'Mensal - 2x por semana',monthly_3:'Mensal - 3x por semana',test_2:'Teste - 2 aulas'};
+
+ // Faltas e reposicoes sao apuradas apenas dentro da vigencia do pacote atual.
+ const receiptWindow=packageWindow(s);
+ const inReceiptPackage=d=>!receiptWindow||(d>=receiptWindow.start&&d<=receiptWindow.end);
+ const adjustments=(data.pilates_class_adjustments||[]).filter(a=>a.student_id===s.id&&inReceiptPackage(a.class_date));
+ const absenceDates=[...new Set(adjustments.filter(a=>a.status==='absent'||a.status==='excused'||a.status==='made_up').map(a=>a.class_date))].filter(d=>!rows.some(t=>day(t.occurred_at)===d)).sort();
+ const weeklyAbsences=(data.pilates_weekly_absences||[]).filter(w=>w.student_id===s.id&&w.status==='reviewed'&&(!receiptWindow||(w.week_start<=receiptWindow.end&&w.week_end>=receiptWindow.start))).reduce((n,w)=>n+w.missing_classes,0);
+ // Resumos semanais nao identificam datas individuais; nunca inventar uma data.
+ const absenceCount=Math.max(absenceDates.length,weeklyAbsences);
+ const undatedAbsences=Math.max(0,absenceCount-absenceDates.length);
+ const makeupLimit={monthly_1:1,monthly_2:2,monthly_3:3}[s.pilates_plan]||0;
+ const madeUpCount=adjustments.filter(a=>a.status==='made_up').length;
+ const eligibleMakeups=Math.min(absenceCount,makeupLimit);
+ const makeupsRemaining=Math.max(0,eligibleMakeups-madeUpCount);
+ const formatAbsenceDate=d=>d.split('-').reverse().join('/');
+ const absenceSection='<hr><h2>Faltas e reposicoes</h2><p><strong>Faltas registradas: '+absenceCount+'</strong></p>'+
+  (absenceDates.length?'<p>Datas das faltas:<br>'+absenceDates.map(d=>esc(formatAbsenceDate(d))).join('<br>')+'</p>':'')+
+  (undatedAbsences?'<p>'+undatedAbsences+' falta(s) confirmada(s) em resumo semanal, sem dia individual informado.</p>':'')+
+  (!absenceCount?'<p>Nenhuma falta registrada neste pacote.</p>':'')+
+  '<p>Limite de reposicoes do plano: '+makeupLimit+'<br>Faltas com direito a reposicao: '+eligibleMakeups+
+  '<br>Reposicoes registradas: '+madeUpCount+'<br><strong>Reposicoes ainda disponiveis: '+makeupsRemaining+'</strong></p>';
  const date=t=>new Date(t).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',dateStyle:'short',timeStyle:'short'});
  const popup=window.open('','_blank');if(!popup)return notify('Permita abrir a janela de impressão.');
  const thermalText=value=>String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
- const content='<h1>VITALE</h1><p class="center">Fisioterapia e Pilates<br>Comprovante de aulas</p><p class="note">Emitido em '+esc(date(new Date()))+'</p><hr><p><strong>Aluno:</strong> '+esc(s.name)+'<br><strong>Plano:</strong> '+esc(plans[s.pilates_plan]||'Não informado')+'</p><p>'+ (s.pilates_plan==='test_2'?'Pacote atual'+(s.test_plan_started_at?' desde '+esc(date(s.test_plan_started_at)):'') :'Pacote de '+esc(packageWindow(s)?.start||'data nao definida')+' a '+esc(packageWindow(s)?.end||'data nao definida'))+'</p><hr><h2>Aulas realizadas</h2>'+ (rows.length?rows.map((t,i)=>'<div class="lesson"><strong>'+ (i+1)+'. '+esc(date(t.occurred_at))+'</strong><br>Professor: '+esc((data.professionals.find(p=>p.user_id===t.taught_by_professional_id)?.name||teacher(data.appointments.find(a=>a.id===t.appointment_id))).replace('Professor não informado','Nao informado'))+'</div>').join(''):'<p>Nenhuma aula registrada.</p>')+'<hr><p>Total '+(s.pilates_plan==='test_2'?'do pacote':'do pacote')+': '+total+'<br>Aulas utilizadas: '+used+'<br><strong>Aulas restantes: '+Math.max(0,total-used)+'</strong></p>'+(s.pilates_plan!=='test_2'?'<p class="note">Saldo referente ao plano semanal e às presenças registradas.</p>':'')+'<hr><p class="note">Professor conforme vínculo do agendamento. Presença não comprova atendimento concluído.</p><div aria-hidden="true">&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br></div>';
+ const content='<h1>VITALE</h1><p class="center">Fisioterapia e Pilates<br>Comprovante de aulas</p><p class="note">Emitido em '+esc(date(new Date()))+'</p><hr><p><strong>Aluno:</strong> '+esc(s.name)+'<br><strong>Plano:</strong> '+esc(plans[s.pilates_plan]||'Não informado')+'</p><p>'+ (s.pilates_plan==='test_2'?'Pacote atual'+(s.test_plan_started_at?' desde '+esc(date(s.test_plan_started_at)):'') :'Pacote de '+esc(packageWindow(s)?.start||'data nao definida')+' a '+esc(packageWindow(s)?.end||'data nao definida'))+'</p><hr><h2>Aulas realizadas</h2>'+ (rows.length?rows.map((t,i)=>'<div class="lesson"><strong>'+ (i+1)+'. '+esc(date(t.occurred_at))+'</strong><br>Professor: '+esc((data.professionals.find(p=>p.user_id===t.taught_by_professional_id)?.name||teacher(data.appointments.find(a=>a.id===t.appointment_id))).replace('Professor não informado','Nao informado'))+'</div>').join(''):'<p>Nenhuma aula registrada.</p>')+absenceSection+'<hr><p>Total '+(s.pilates_plan==='test_2'?'do pacote':'do pacote')+': '+total+'<br>Aulas utilizadas: '+used+'<br><strong>Aulas restantes: '+Math.max(0,total-used)+'</strong></p>'+(s.pilates_plan!=='test_2'?'<p class="note">Saldo referente ao plano semanal e às presenças registradas.</p>':'')+'<hr><p class="note">Professor conforme vínculo do agendamento. Presença não comprova atendimento concluído.</p><div aria-hidden="true">&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br></div>';
  popup.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Comprovante - '+esc(thermalText(s.name))+'</title><style>@page{size:58mm 150mm;margin:3mm}*{box-sizing:border-box}body{width:48mm;margin:0 auto;font:11px/1.4 Arial;color:#000;overflow-wrap:anywhere}h1{font-size:18px;text-align:center;margin:0}h2{font-size:12px}p{margin:8px 0}.center{text-align:center}.lesson{margin:8px 0;break-inside:avoid}hr{border:0;border-top:1px dashed #000}.note{font-size:9px}@media screen{body{padding:12px 0}}</style></head><body>'+thermalText(content)+'</body></html>');
  popup.document.close();popup.focus();setTimeout(()=>popup.print(),300);
 });
