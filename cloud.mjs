@@ -446,7 +446,24 @@ async function handleHistorySubmit(e){
    if(!saved)throw Error('A falta não apareceu no histórico após a gravação.');
   }
   historyDialog.close();notify(isPresence?'Presença confirmada no histórico.':'Falta confirmada no histórico.');
- }catch(err){error.textContent=err.message||'Não foi possível salvar o registro.';notify('Falha no registro: '+error.textContent);}
+ }catch(err){
+  const message=err?.message||'Não foi possível salvar o registro.';
+  // A RPC pode devolver duplicidade apos uma tentativa anterior ter sido gravada.
+  // Reconsulta o historico sem reenviar nem criar outra presenca.
+  if(isPresence&&/j[aá] existe presen[cç]a|duplicate|duplicad|unique/i.test(message)){
+   try{
+    await reload();
+    const exists=data.attendance.some(a=>a.student_id===id&&day(a.occurred_at)===date);
+    if(exists){
+     historyDialog.close();
+     notify('Presença já registrada em '+date.split('-').reverse().join('/')+'. Nenhum registro duplicado foi criado.');
+     return;
+    }
+   }catch(checkError){console.warn('[Vitale] Falha ao conferir presença existente',checkError);}
+  }
+  error.textContent=message;
+  notify('Falha no registro: '+error.textContent);
+ }
  finally{save.disabled=false;}
 }
 
