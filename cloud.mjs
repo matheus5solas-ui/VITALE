@@ -600,7 +600,7 @@ document.addEventListener('click',e=>{
  const student=data.students.find(s=>s.id===b.dataset.whatsappReceipt);if(!student)return;
  let phone=String(student.phone||'').replace(/\D/g,'');
  if(phone.length===10||phone.length===11)phone='55'+phone;
- if(!/^55\d{10,11}$/.test(phone))return notify('Cadastre um telefone brasileiro valido com DDD para enviar pelo WhatsApp.');
+ if(!/^55\d{10,11}$/.test(phone)){window.alert('Este aluno nao possui um telefone valido com DDD. Abra Alunos e pacientes, edite o telefone e tente novamente. Nenhuma mensagem foi enviada.');return;}
  const period=packageWindow(student);
  const inPeriod=d=>!period||(d>=period.start&&d<=period.end);
  const lessons=(student.pilates_plan==='test_2'?classAttendance(student):packageAttendances(student)).slice().sort((a,b)=>a.occurred_at.localeCompare(b.occurred_at));
@@ -625,8 +625,8 @@ document.addEventListener('click',e=>{
   'Reposicoes disponiveis: '+Math.max(0,Math.min(absentCount,limit)-madeUp),
   'Registro de frequencia; nao comprova atendimento concluido.'];
  const url='https://wa.me/'+phone+'?text='+encodeURIComponent(lines.join('\n'));
- const opened=window.open(url,'_blank','noopener,noreferrer');
- if(!opened)notify('Permita pop-ups deste site para abrir o WhatsApp.');
+ // Navegacao na aba atual evita bloqueio de pop-up; o operador confirma o envio no WhatsApp Business.
+ if(window.confirm('Abrir WhatsApp para '+student.name+'? Confira que o WhatsApp Web esta conectado a conta comercial da Vitale. O envio nao sera automatico.'))window.location.assign(url);
 });
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-receipt]');if(!b)return;
