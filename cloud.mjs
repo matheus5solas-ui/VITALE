@@ -645,7 +645,11 @@ document.addEventListener('click',e=>{
  // Abre a conversa diretamente no WhatsApp Web, com o texto pronto para revisao.
  // A mensagem nao e enviada automaticamente: o atendente confirma o envio no WhatsApp Business.
  const url='https://web.whatsapp.com/send?phone='+encodeURIComponent(phone)+'&text='+encodeURIComponent(lines.join('\n'));
- window.location.assign(url);
+ // Reutiliza uma aba nomeada do WhatsApp sem substituir a tela da Vitale.
+ // O nome fixo evita abrir uma nova aba para cada relatorio.
+ const whatsappTab=window.open(url,'vitale_whatsapp');
+ if(!whatsappTab)return notify('O navegador bloqueou a aba do WhatsApp. Permita pop-ups para o sistema Vitale e tente novamente.');
+ whatsappTab.focus();
 });
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-receipt]');if(!b)return;
