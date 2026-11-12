@@ -378,10 +378,16 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryNote').value=old?.note||'';
  historyField('vitaleHistoryError').textContent='';
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
- // Evita sobreposicao de modais e duplicidade de IDs no DOM.
- document.querySelectorAll('dialog[open]').forEach(d=>{if(d!==historyDialog)d.close();});
- document.querySelectorAll('dialog#vitaleHistoryDialog').forEach(d=>{if(d!==historyDialog){if(d.open)d.close();d.remove();}});
- if(!historyDialog.open)historyDialog.showModal();
+ // Reanexa o dialogo caso um render anterior o tenha removido do DOM.
+ // Nunca remove o proprio dialogo nem altera dados persistidos.
+ if(!historyDialog.isConnected)document.body.appendChild(historyDialog);
+ try{
+  document.querySelectorAll('dialog[open]').forEach(d=>{if(d!==historyDialog)d.close();});
+  if(!historyDialog.open)historyDialog.showModal();
+ }catch(err){
+  console.error('[Vitale] Erro ao abrir registro manual',err);
+  notify('Não foi possível abrir o registro: '+(err?.message||String(err)));
+ }
 });
 async function handleHistorySubmit(e){
  e.preventDefault();
