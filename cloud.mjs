@@ -642,9 +642,10 @@ document.addEventListener('click',e=>{
   '💚 Obrigado por fazer parte da Vitale!',
   '_Registro de frequência; não comprova atendimento concluído._'
  ];
- const url='https://wa.me/'+phone+'?text='+encodeURIComponent(lines.join('\n'));
- // Navegacao na aba atual evita bloqueio de pop-up; o operador confirma o envio no WhatsApp Business.
- if(window.confirm('Abrir WhatsApp para '+student.name+'? Confira que o WhatsApp Web esta conectado a conta comercial da Vitale. O envio nao sera automatico.'))window.location.assign(url);
+ // Abre a conversa diretamente no WhatsApp Web, com o texto pronto para revisao.
+ // A mensagem nao e enviada automaticamente: o atendente confirma o envio no WhatsApp Business.
+ const url='https://web.whatsapp.com/send?phone='+encodeURIComponent(phone)+'&text='+encodeURIComponent(lines.join('\n'));
+ window.location.assign(url);
 });
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-receipt]');if(!b)return;
