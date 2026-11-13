@@ -722,7 +722,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-classes]');if(!b)return;
  const s=data.students.find(s=>s.id===b.dataset.printClasses);if(!s)return;
- const presences=classAttendance(s,false).map(t=>({date:day(t.occurred_at),time:new Date(t.occurred_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'}),kind:'presence',source:t.source,professor:teacher(data.appointments.find(a=>a.id===t.appointment_id))}));
+ const presences=classAttendance(s,false).map(t=>({date:day(t.occurred_at),time:new Date(t.occurred_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'}),kind:'presence',source:t.source,professor:(data.professionals.find(p=>p.user_id===t.taught_by_professional_id)?.name||data.professionals.find(p=>p.user_id===data.appointments.find(a=>a.id===t.appointment_id)?.professional_id)?.name||(data.professionals.find(p=>p.user_id===s.responsible_professional_id)?.name||'Não informado')+' (responsável; aula não atribuída)')}));
  const adjustments=(data.pilates_class_adjustments||[]).filter(a=>a.student_id===s.id).map(a=>({date:a.class_date,kind:'absence',status:a.status,note:a.note,makeup_date:a.makeup_date}));
  const presenceDays=new Set(presences.map(t=>t.date));
  const rows=[...presences,...adjustments.filter(a=>!presenceDays.has(a.date))].sort((a,b)=>a.date.localeCompare(b.date)||(a.kind==='presence'?-1:1));
