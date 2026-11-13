@@ -296,6 +296,7 @@ document.body.append(historyDialog);
 // Vincula o envio diretamente ao formulario. Nao depende de onsubmit (que pode ficar nulo).
 historyDialog.querySelector('form').addEventListener('submit',e=>{e.preventDefault();handleHistorySubmit(e);});
 let historyContext=null;
+let historyCorrectionController=null;
 const historyField=id=>document.getElementById(id);
 const formatHistoryDate=value=>{
  const digits=String(value||'').replace(/\D/g,'').slice(0,8);
@@ -365,6 +366,7 @@ document.addEventListener('click',e=>{
  const student=data.students.find(s=>s.id===id);if(!student)return;
  const isPresence=!!btn.dataset.manualHistory;
  const old=(data.pilates_class_adjustments||[]).find(a=>a.student_id===id&&a.class_date===btn.dataset.absenceDate);
+ if(historyCorrectionController)historyCorrectionController.abort();historyCorrectionController=new AbortController();
  historyContext={id,isPresence};
  historyField('vitaleHistoryTitle').textContent=isPresence?'Registrar presença manual':btn.dataset.editDailyAbsence?'Editar falta':'Registrar falta';
  historyField('vitaleHistoryStudent').textContent=student.name;
@@ -381,18 +383,19 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryError').textContent='';
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
  const correctBtn=historyField('vitaleHistoryCorrect');
- const existingManual=data.attendance.find(a=>a.student_id===id&&a.source==='manual'&&day(a.occurred_at)===btn.dataset.absenceDate);
- correctBtn.style.display=staff?.role==='admin'&&!isPresence&&existingManual?'inline-block':'none';
+ const currentIso=()=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(historyField('vitaleHistoryDate').value);return m?m[3]+'-'+m[2]+'-'+m[1]:null;};
+ const refreshCorrection=()=>{const iso=currentIso();const manual=data.attendance.find(a=>a.student_id===id&&a.source==='manual'&&day(a.occurred_at)===iso);correctBtn.style.display=staff?.role==='admin'&&!isPresence&&manual?'inline-block':'none';};
+ historyField('vitaleHistoryDate').addEventListener('input',refreshCorrection,{signal:historyCorrectionController.signal});
+ refreshCorrection();
  correctBtn.onclick=async()=>{
-  const currentDate=historyField('vitaleHistoryDate').value;
-  const expected=btn.dataset.absenceDate?.split('-').reverse().join('/');
-  if(currentDate!==expected){historyField('vitaleHistoryError').textContent='Para corrigir a presença, abra a falta na data original '+expected+'.';return;}
+  const iso=currentIso();const expected=iso?.split('-').reverse().join('/');
+  if(!iso||!data.attendance.some(a=>a.student_id===id&&a.source==='manual'&&day(a.occurred_at)===iso)){historyField('vitaleHistoryError').textContent='Não existe presença manual nesta data.';return;}
   const reason=prompt('Motivo da correção da presença manual de '+student.name+' em '+expected+' (mínimo 8 caracteres):','Presença manual lançada por engano; aluna faltou.');
   if(!reason||reason.trim().length<8)return;
   if(!confirm('Confirmar correção de PRESENÇA MANUAL para FALTA de '+student.name+' em '+expected+'? O registro original ficará guardado na auditoria.'))return;
   correctBtn.disabled=true;
   try{
-   const result=await api('/rest/v1/rpc/vitale_correct_manual_presence_to_absence',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:btn.dataset.absenceDate,p_reason:reason.trim()})});
+   const result=await api('/rest/v1/rpc/vitale_correct_manual_presence_to_absence',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:iso,p_reason:reason.trim()})});
    if(!result?.corrected)throw Error('O banco não confirmou a correção.');
    await reload();historyDialog.close();notify('Presença manual corrigida para falta. Histórico original preservado na auditoria.');
   }catch(err){historyField('vitaleHistoryError').textContent=err.message||'Falha ao corrigir presença.';correctBtn.disabled=false;}
