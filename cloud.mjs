@@ -291,7 +291,7 @@ document.querySelectorAll('dialog#vitaleHistoryDialog').forEach(d=>{if(d.open)d.
 const historyDialog=document.createElement('dialog');
 historyDialog.id='vitaleHistoryDialog';
 historyDialog.style.cssText='width:min(440px,94vw);border:1px solid #d5e1da;border-radius:14px;padding:24px;box-shadow:0 20px 65px #173c2c33';
-historyDialog.innerHTML='<form id="vitaleHistoryForm" novalidate style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="button">Confirmar</button></div></form>';
+historyDialog.innerHTML='<form id="vitaleHistoryForm" novalidate style="display:grid;gap:14px"><h3 id="vitaleHistoryTitle" style="margin:0">Registro de aula</h3><p id="vitaleHistoryStudent" style="margin:0"></p><label style="display:grid;gap:6px">Data da aula<input id="vitaleHistoryDate" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" required style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryTimeWrap" style="display:grid;gap:6px">Horário real da presença<input id="vitaleHistoryTime" type="time" step="60" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryStatusWrap" style="display:none;gap:6px">Situação<select id="vitaleHistoryStatus" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"><option value="absent">Falta confirmada</option><option value="excused">Falta justificada</option><option value="made_up">Aula reposta</option></select></label><label id="vitaleHistoryMakeupWrap" style="display:none;gap:6px">Data da reposição<input id="vitaleHistoryMakeup" type="date" style="padding:10px;border:1px solid #ccd8d0;border-radius:8px"></label><label id="vitaleHistoryNoteWrap" style="display:none;gap:6px">Observação (opcional)<textarea id="vitaleHistoryNote" rows="2"></textarea></label><p id="vitaleHistoryError" role="alert" style="color:#b42318;margin:0;white-space:pre-wrap"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button id="vitaleHistoryCorrect" type="button" class="secondary" style="display:none;color:#a52828">Corrigir presença manual para falta</button><button id="vitaleHistoryCancel" type="button" class="secondary">Cancelar</button><button id="vitaleHistorySave" type="button">Confirmar</button></div></form>';
 document.body.append(historyDialog);
 // Vincula o envio diretamente ao formulario. Nao depende de onsubmit (que pode ficar nulo).
 historyDialog.querySelector('form').addEventListener('submit',e=>{e.preventDefault();handleHistorySubmit(e);});
@@ -380,6 +380,23 @@ document.addEventListener('click',e=>{
  historyField('vitaleHistoryNote').value=old?.note||'';
  historyField('vitaleHistoryError').textContent='';
  historyField('vitaleHistoryStatus').dispatchEvent(new Event('change'));
+ const correctBtn=historyField('vitaleHistoryCorrect');
+ const existingManual=data.attendance.find(a=>a.student_id===id&&a.source==='manual'&&day(a.occurred_at)===btn.dataset.absenceDate);
+ correctBtn.style.display=staff?.role==='admin'&&!isPresence&&existingManual?'inline-block':'none';
+ correctBtn.onclick=async()=>{
+  const currentDate=historyField('vitaleHistoryDate').value;
+  const expected=btn.dataset.absenceDate?.split('-').reverse().join('/');
+  if(currentDate!==expected){historyField('vitaleHistoryError').textContent='Para corrigir a presença, abra a falta na data original '+expected+'.';return;}
+  const reason=prompt('Motivo da correção da presença manual de '+student.name+' em '+expected+' (mínimo 8 caracteres):','Presença manual lançada por engano; aluna faltou.');
+  if(!reason||reason.trim().length<8)return;
+  if(!confirm('Confirmar correção de PRESENÇA MANUAL para FALTA de '+student.name+' em '+expected+'? O registro original ficará guardado na auditoria.'))return;
+  correctBtn.disabled=true;
+  try{
+   const result=await api('/rest/v1/rpc/vitale_correct_manual_presence_to_absence',{method:'POST',body:JSON.stringify({p_student_id:id,p_class_date:btn.dataset.absenceDate,p_reason:reason.trim()})});
+   if(!result?.corrected)throw Error('O banco não confirmou a correção.');
+   await reload();historyDialog.close();notify('Presença manual corrigida para falta. Histórico original preservado na auditoria.');
+  }catch(err){historyField('vitaleHistoryError').textContent=err.message||'Falha ao corrigir presença.';correctBtn.disabled=false;}
+ };
  // Reanexa o dialogo caso um render anterior o tenha removido do DOM.
  // Nunca remove o proprio dialogo nem altera dados persistidos.
  if(!historyDialog.isConnected)document.body.appendChild(historyDialog);
