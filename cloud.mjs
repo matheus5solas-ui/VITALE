@@ -176,7 +176,7 @@ document.addEventListener('click',async e=>{
  if(confirmation.trim().toUpperCase()!==student.student_code)return notify('Arquivamento cancelado: o código informado não corresponde ao aluno selecionado.');
  btn.disabled=true;
  try{await api('/rest/v1/rpc/vitale_archive_student',{method:'POST',body:JSON.stringify({p_student_id:student.id,p_confirmation:'EXCLUIR',p_reason:'Cadastro duplicado'})});await reload();notify('Cadastro '+student.student_code+' arquivado. Histórico preservado.');}
- catch(err){notify('Arquivamento não realizado. O cadastro pode ter histórico, agendamentos ou vínculo facial. Solicite revisão antes de excluir.');}
+ catch(err){notify('Não foi possível arquivar '+student.student_code+': '+(err.message||'erro desconhecido')+'. Confira o cadastro e tente novamente.');}
  finally{btn.disabled=false;}
 });
 document.addEventListener('click',async e=>{const id=e.target.dataset.present;if(!id)return;const a=data.appointments.find(a=>a.id===id);if(!a)return;if(!confirm('Confirmar presença manual de '+name(a.student_id)+' nesta aula?'))return;e.target.disabled=true;try{await api('/rest/v1/attendance',{method:'POST',body:JSON.stringify({student_id:a.student_id,appointment_id:a.id,occurred_at:new Date().toISOString(),source:'manual',recorded_by:staff.user_id})});await reload();notify('Presença confirmada.');}catch(err){notify(err.message);}finally{e.target.disabled=false;}});
