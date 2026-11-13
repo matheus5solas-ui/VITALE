@@ -171,9 +171,9 @@ document.addEventListener('click',async e=>{
  const btn=e.target.closest('[data-archive-student]');if(!btn)return;
  const student=data.students.find(s=>s.id===btn.dataset.archiveStudent);
  if(!student||staff?.role!=='admin')return;
- if(!confirm('Arquivar '+student.name+' (código '+student.student_code+')? Esta ação remove o cadastro da lista ativa, mas preserva o histórico. Cadastros com presenças, agenda ou facial vinculados serão bloqueados.'))return;
- if(prompt('Confirme o código EXATO do aluno que deseja arquivar:','')!==student.student_code)return notify('Exclusão cancelada: código do aluno não confere.');
- if(prompt('Para confirmar, digite EXCLUIR:','')!=='EXCLUIR')return;
+ const confirmation=prompt('ARQUIVAR CADASTRO (não apaga o histórico)\nAluno: '+student.name+'\nCódigo: '+student.student_code+'\n\nDigite o CÓDIGO DO ALUNO mostrado acima para confirmar.\nSe houver presenças, agenda ou vínculo facial, o sistema impedirá a operação.','');
+ if(confirmation===null)return;
+ if(confirmation.trim().toUpperCase()!==student.student_code)return notify('Arquivamento cancelado: o código informado não corresponde ao aluno selecionado.');
  btn.disabled=true;
  try{await api('/rest/v1/rpc/vitale_archive_student',{method:'POST',body:JSON.stringify({p_student_id:student.id,p_confirmation:'EXCLUIR',p_reason:'Cadastro duplicado'})});await reload();notify('Cadastro '+student.student_code+' arquivado. Histórico preservado.');}
  catch(err){notify('Arquivamento não realizado. O cadastro pode ter histórico, agendamentos ou vínculo facial. Solicite revisão antes de excluir.');}
