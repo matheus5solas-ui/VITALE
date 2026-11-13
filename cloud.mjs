@@ -719,7 +719,7 @@ document.addEventListener('click',e=>{
  popup.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Comprovante Vitale</title><style id="receiptPageStyle">@page{size:58mm 200mm;margin:0}</style><style>*{box-sizing:border-box}html,body{margin:0;padding:0}body{width:58mm;padding:3mm 4mm 5mm;font:11px/1.3 Arial;color:#000;overflow-wrap:anywhere}h1{font-size:17px;text-align:center;margin:0}h2{font-size:12px;margin:5px 0}p{margin:5px 0}.center{text-align:center}.lesson{margin:5px 0;break-inside:avoid}hr{border:0;border-top:1px dashed #000;margin:6px 0}.note{font-size:9px}@media print{html,body{width:58mm!important}}</style></head><body>'+thermalText(content)+'</body></html>');
  popup.document.close();popup.focus();
  // Ajusta o comprimento do papel ao conteúdo para evitar paginação em 2/2.
- setTimeout(()=>{const px=popup.document.body.scrollHeight;const mm=Math.ceil(px*25.4/96)+8;popup.document.getElementById('receiptPageStyle').textContent='@page{size:58mm '+Math.max(80,mm)+'mm;margin:0}';popup.print();},350);
+ setTimeout(async()=>{try{await popup.document.fonts.ready;}catch{}const body=popup.document.body;const px=Math.max(body.scrollHeight,body.getBoundingClientRect().height);const mm=Math.ceil(px*25.4/96)+24;const style=popup.document.getElementById('receiptPageStyle');style.textContent='@page{size:58mm '+Math.max(100,mm)+'mm;margin:0}';popup.document.title='';popup.requestAnimationFrame(()=>popup.requestAnimationFrame(()=>popup.print()));},500);
 });
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-print-classes]');if(!b)return;
