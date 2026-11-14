@@ -52,7 +52,14 @@ async function openSheet(studentId){
  try{
   const rows=await api('/rest/v1/student_training_logs?select=*&student_id=eq.'+encodeURIComponent(studentId)+'&order=session_date.desc,created_at.desc&limit=80');
   if(currentStudent!==studentId||!dialog.open)return;
-  const history=rows.map(r=>'<article style="padding:12px 0;border-bottom:1px solid #e1e7e4"><strong>'+esc(r.session_date.split('-').reverse().join('/'))+' · '+esc(label(r.region))+'</strong><p>'+esc(r.activities||'Sem exercícios detalhados')+'</p>'+(r.conditions?.length?'<p><small>Condições assinaladas: '+r.conditions.map(k=>esc(CONDITIONS.find(c=>c[0]===k)?.[1]||k)).join(', ')+'</small></p>':'')+(r.observations?'<p><small>Observações: '+esc(r.observations)+'</small></p>':'')+'</article>').join('')||'<p>Nenhum treino registrado ainda.</p>';
+  let staffNames=new Map();
+  try{
+   const people=await api('/rest/v1/staff?select=user_id,name&active=eq.true');
+   staffNames=new Map(people.map(p=>[p.user_id,p.name]));
+  }catch{} // Permissões restritas não impedem a abertura do histórico.
+  if(staff?.user_id)staffNames.set(staff.user_id,staff.name);
+  const professionalName=id=>staffNames.get(id)||data.professionals.find(p=>p.user_id===id)?.name||'Profissional não identificado';
+  const history=rows.map(r=>'<article style="padding:12px 0;border-bottom:1px solid #e1e7e4"><strong>'+esc(r.session_date.split('-').reverse().join('/'))+' · '+esc(label(r.region))+'</strong><p><small>Profissional: '+esc(professionalName(r.professional_id))+'</small></p><p>'+esc(r.activities||'Sem exercícios detalhados')+'</p>'+(r.conditions?.length?'<p><small>Condições assinaladas: '+r.conditions.map(k=>esc(CONDITIONS.find(c=>c[0]===k)?.[1]||k)).join(', ')+'</small></p>':'')+(r.observations?'<p><small>Observações: '+esc(r.observations)+'</small></p>':'')+'</article>').join('')||'<p>Nenhum treino registrado ainda.</p>';
   dialog.innerHTML='<h2>Ficha técnica de treino</h2><p><strong>'+esc(student.name)+'</strong> · Código '+esc(student.student_code||'')+'</p><p><small>Informações clínicas confidenciais. As marcações registram informações relatadas ou avaliadas pelo profissional e não constituem diagnóstico automático.</small></p>'+
   '<form id="trainingForm"><label class="training-field">Data da sessão <input name="session_date" type="date" value="'+esc(day(new Date()))+'" required></label>'+
   '<label class="training-field">Região trabalhada <select name="region" required>'+REGIONS.map(([v,t])=>'<option value="'+v+'">'+esc(t)+'</option>').join('')+'</select></label>'+
@@ -60,8 +67,18 @@ async function openSheet(studentId){
   '<fieldset class="training-conditions training-wide"><legend>Condições e cuidados identificados</legend><p><small>Marque apenas o que foi confirmado no atendimento.</small></p><div class="training-condition-grid">'+CONDITIONS.map(([v,t])=>'<label class="training-check"><input type="checkbox" name="condition" value="'+v+'"> '+esc(t)+'</label>').join('')+'</div></fieldset>'+
   '<label class="training-field training-wide">Observações, adaptações, sintomas ou orientações <textarea name="observations" rows="3" maxlength="4000" placeholder="Ex.: redução de carga, desconforto relatado, resposta à sessão"></textarea></label>'+
   '<div class="training-actions training-wide"><button type="submit" id="trainingSave">Salvar sessão</button><button type="button" class="secondary" id="trainingClose">Fechar</button><span class="training-error" id="trainingSaveError" role="alert"></span></div></form>'+
-  '<section class="training-history"><h3>Histórico de treinos</h3><div id="trainingHistory">'+history+'</div></section>';
+  '<section class="training-history"><h3>Histórico de treinos</h3><p><small>Últimas '+rows.length+' sessões carregadas (máximo de 80).</small></p><button type="button" class="secondary" id="trainingPrint">Imprimir histórico</button><div id="trainingHistory">'+history+'</div></section>';
   dialog.querySelector('#trainingClose').onclick=()=>dialog.close();
+  dialog.querySelector('#trainingPrint').onclick=()=>{
+   const popup=window.open('','_blank');
+   if(!popup){notify('Permita janelas pop-up para imprimir o histórico.');return;}
+   const header='<h1>VITALE</h1><p>Fisioterapia e Pilates</p><h2>Ficha técnica - histórico de treinos</h2><p>Aluno: '+esc(student.name)+'<br>Código: '+esc(student.student_code||'Não informado')+'</p><p>Relatório com '+rows.length+' sessões (máximo de 80). Documento confidencial.</p>';
+   const historyHtml=dialog.querySelector('#trainingHistory').innerHTML;
+   popup.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Histórico de treinos - Vitale</title><style>@page{size:A4;margin:16mm}body{font:12px/1.5 Arial,sans-serif;color:#111}h1{margin:0;color:#173d33}h2{font-size:16px}article{break-inside:avoid}p{margin:6px 0}small{font-size:11px}</style></head><body>'+header+'<hr>'+historyHtml+'</body></html>');
+   popup.document.close();
+   popup.focus();
+   setTimeout(()=>popup.print(),300);
+  };
   dialog.querySelector('#trainingForm').onsubmit=async e=>{
    e.preventDefault();const form=e.currentTarget,save=form.querySelector('#trainingSave'),fd=new FormData(form);
    save.disabled=true;
