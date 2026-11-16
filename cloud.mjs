@@ -235,7 +235,7 @@ function packageAttendances(student){
  if(!window)return [];
  const dates=new Set();
  return data.attendance.filter(t=>{
-  if(t.student_id!==student.id)return false;
+  if((data.attendance_voids||[]).some(v=>v.attendance_id===t.id)||t.student_id!==student.id)return false;
   const date=day(t.occurred_at);
   if(date<window.start||date>window.end||dates.has(date))return false;
   dates.add(date);return true;
