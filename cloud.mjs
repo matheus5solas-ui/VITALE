@@ -753,26 +753,47 @@ document.addEventListener('click',e=>{
  popup.document.close();popup.focus();setTimeout(()=>popup.print(),300);
 });
 
-document.addEventListener('click',async e=>{
+document.addEventListener('click',e=>{
  const b=e.target.closest('[data-renew-monthly]');if(!b||staff?.role==='professional')return;
  const student=data.students.find(s=>s.id===b.dataset.renewMonthly);
  if(!student||!student.pilates_plan?.startsWith('monthly_'))return;
+ const old=document.getElementById('monthlyRenewDialog');if(old)old.remove();
+ const dialog=document.createElement('dialog');dialog.id='monthlyRenewDialog';
+ dialog.style.cssText='width:min(92vw,520px);max-height:90vh;overflow:auto;border:1px solid #d9e5df;border-radius:16px;padding:0;box-shadow:0 22px 65px #0003;color:#163d32;background:white';
  const suggested=student.plan_expires_on?addCalendarDays(student.plan_expires_on,1):today;
- const start=prompt('Início do novo pacote de '+student.name+' (AAAA-MM-DD):',suggested);
- if(start===null)return;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!Number.isFinite(Date.parse(start))||new Date(start+'T12:00:00Z').toISOString().slice(0,10)!==start)return notify('Data inicial inválida. Use AAAA-MM-DD.');
- const end=prompt('Até quando vale o novo pacote? (AAAA-MM-DD):',addCalendarDays(start,29));
- if(end===null)return;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(end)||!Number.isFinite(Date.parse(end))||new Date(end+'T12:00:00Z').toISOString().slice(0,10)!==end||end<start)return notify('Vencimento inválido: deve ser igual ou posterior ao início.');
- if(student.plan_expires_on&&start<=student.plan_expires_on&&!confirm('A nova vigência começa antes do vencimento atual. Continuar mesmo assim?'))return;
- if(!confirm('Renovar '+student.name+' de '+start+' até '+end+'? O histórico anterior será preservado. Esta ação não registra pagamento.'))return;
- b.disabled=true;
- try{
-  const filter='/rest/v1/students?id=eq.'+student.id+'&plan_started_on='+ (student.plan_started_on?'eq.'+student.plan_started_on:'is.null')+'&plan_expires_on='+(student.plan_expires_on?'eq.'+student.plan_expires_on:'is.null');
-  const rows=await api(filter,{method:'PATCH',body:JSON.stringify({plan_started_on:start,plan_expires_on:end})});
-  if(!rows?.length)throw Error('Outra pessoa alterou o pacote. Atualize a página e confira antes de tentar novamente.');
-  await reload();notify('Pacote renovado de '+start+' até '+end+'. Histórico anterior preservado.');
- }catch(error){notify('Não foi possível renovar: '+(error.message||error));}finally{b.disabled=false;}
+ const fmt=d=>d?d.split('-').reverse().join('/'):'Não informado';
+ dialog.innerHTML='<form id="monthlyRenewForm" style="padding:26px;display:grid;gap:17px">'+
+ '<div><h2 style="margin:0 0 6px;font-size:22px;color:#153e32">Renovar pacote de Pilates</h2><p style="margin:0;color:#586d63">Aluno: <strong>'+esc(student.name)+'</strong></p></div>'+
+ '<div style="background:#f2f7f4;border-radius:10px;padding:12px 14px;font-size:14px"><strong>Pacote atual</strong><div>De '+esc(fmt(student.plan_started_on))+' até '+esc(fmt(student.plan_expires_on))+'</div><small>As presenças anteriores serão preservadas.</small></div>'+
+ '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px">'+
+ '<label style="display:grid;gap:7px;font-weight:600">Início da renovação<input name="start" type="date" required value="'+esc(suggested)+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bccfc5;border-radius:8px;font:inherit"></label>'+
+ '<label style="display:grid;gap:7px;font-weight:600">Válido até<input name="end" type="date" required value="'+esc(addCalendarDays(suggested,29))+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bccfc5;border-radius:8px;font:inherit"></label></div>'+
+ '<p style="margin:0;font-size:13px;color:#586d63">A renovação não registra pagamento automaticamente.</p>'+
+ '<p id="monthlyRenewError" role="alert" style="margin:0;color:#a32626" hidden></p>'+
+ '<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap"><button type="button" class="secondary" id="monthlyRenewCancel">Cancelar</button><button type="submit" id="monthlyRenewSubmit">Confirmar renovação</button></div></form>';
+ document.body.append(dialog);
+ const form=dialog.querySelector('form'),startInput=form.elements.start,endInput=form.elements.end;
+ const error=dialog.querySelector('#monthlyRenewError');
+ const showError=message=>{error.textContent=message;error.hidden=false;};
+ const close=()=>dialog.close();
+ dialog.querySelector('#monthlyRenewCancel').onclick=close;
+ dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+ startInput.addEventListener('change',()=>{if(!endInput.value||endInput.value<startInput.value)endInput.value=addCalendarDays(startInput.value,29);});
+ form.onsubmit=async event=>{
+  event.preventDefault();error.hidden=true;
+  const start=startInput.value,end=endInput.value;
+  if(!start||!end||end<start)return showError('Informe datas válidas. O vencimento deve ser igual ou posterior ao início.');
+  if(student.plan_expires_on&&start<=student.plan_expires_on&&!confirm('A nova vigência se sobrepõe ao pacote atual. Deseja continuar?'))return;
+  if(!confirm('Confirmar renovação de '+student.name+' de '+fmt(start)+' até '+fmt(end)+'?'))return;
+  const submit=dialog.querySelector('#monthlyRenewSubmit');submit.disabled=true;submit.textContent='Salvando...';
+  try{
+   const filter='/rest/v1/students?id=eq.'+student.id+'&plan_started_on='+(student.plan_started_on?'eq.'+student.plan_started_on:'is.null')+'&plan_expires_on='+(student.plan_expires_on?'eq.'+student.plan_expires_on:'is.null');
+   const rows=await api(filter,{method:'PATCH',body:JSON.stringify({plan_started_on:start,plan_expires_on:end})});
+   if(!rows?.length)throw Error('O pacote foi alterado por outra pessoa. Atualize a página antes de tentar novamente.');
+   close();await reload();notify('Pacote renovado até '+fmt(end)+'. Histórico preservado.');
+  }catch(err){showError('Não foi possível renovar: '+(err.message||err));}finally{submit.disabled=false;submit.textContent='Confirmar renovação';}
+ };
+ dialog.showModal();
 });
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-renew-classes]');if(!b||staff?.role==='professional')return;
