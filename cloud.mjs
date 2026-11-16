@@ -760,10 +760,10 @@ document.addEventListener('click',async e=>{
  const suggested=student.plan_expires_on?addCalendarDays(student.plan_expires_on,1):today;
  const start=prompt('Início do novo pacote de '+student.name+' (AAAA-MM-DD):',suggested);
  if(start===null)return;
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||!Number.isFinite(Date.parse(start))||new Date(start+'T12:00:00Z').toISOString().slice(0,10)!==start)return notify('Data inicial inválida. Use AAAA-MM-DD.');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!Number.isFinite(Date.parse(start))||new Date(start+'T12:00:00Z').toISOString().slice(0,10)!==start)return notify('Data inicial inválida. Use AAAA-MM-DD.');
  const end=prompt('Até quando vale o novo pacote? (AAAA-MM-DD):',addCalendarDays(start,29));
  if(end===null)return;
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(end)||!Number.isFinite(Date.parse(end))||new Date(end+'T12:00:00Z').toISOString().slice(0,10)!==end||end<start)return notify('Vencimento inválido: deve ser igual ou posterior ao início.');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(end)||!Number.isFinite(Date.parse(end))||new Date(end+'T12:00:00Z').toISOString().slice(0,10)!==end||end<start)return notify('Vencimento inválido: deve ser igual ou posterior ao início.');
  if(student.plan_expires_on&&start<=student.plan_expires_on&&!confirm('A nova vigência começa antes do vencimento atual. Continuar mesmo assim?'))return;
  if(!confirm('Renovar '+student.name+' de '+start+' até '+end+'? O histórico anterior será preservado. Esta ação não registra pagamento.'))return;
  b.disabled=true;
