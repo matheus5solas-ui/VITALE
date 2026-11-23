@@ -11,11 +11,13 @@ window.addEventListener('vitale:refresh',load);
 function dayOfAppointment(date){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Fortaleza',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date));}
 function render(){const d=currentData(),role=currentStaff()?.role;
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
-const list=rows.ledger.filter(r=>r.paid_on.startsWith($('financeMonth').value)),total=k=>list.filter(r=>r.kind===k&&r.settlement_status==='received').reduce((v,r)=>v+Number(r.amount),0);
+const month=$('financeMonth').value;
+const list=rows.ledger.filter(r=>r.paid_on.startsWith(month)),cashRows=rows.ledger.filter(r=>(r.kind==='income'?(r.settled_on||r.paid_on):r.paid_on)?.startsWith(month)&&r.settlement_status==='received');
+const total=k=>cashRows.filter(r=>r.kind===k).reduce((v,r)=>v+Number(r.amount),0);
 const pending=list.filter(r=>r.kind==='income'&&r.settlement_status==='pending').reduce((v,r)=>v+Number(r.amount),0);
 const physiotherapy=d.appointments.filter(a=>String(a.activity||'').toLowerCase().includes('fisioterapia')&&a.status==='present'&&a.starts_at&&dayOfAppointment(a.starts_at).startsWith($('financeMonth').value)).length;
-$('financeSummary').innerHTML=`<div class="card">Recebimentos confirmados (vendas do mês)<b>${money(total('income'))}</b></div><div class="card">Repasses pendentes<b>${money(pending)}</b></div><div class="card">Fisioterapia concluída (agenda)<b>${physiotherapy}</b></div>`+(role==='admin'?`<div class="card">Despesas<b>${money(total('expense'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
-const costs=['materiais','pessoal','outros'].map(c=>({category:c,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
+$('financeSummary').innerHTML=`<div class="card">Entradas efetivas do mês<b>${money(total('income'))}</b></div><div class="card">Repasses pendentes<b>${money(pending)}</b></div><div class="card">Fisioterapia concluída (agenda)<b>${physiotherapy}</b></div>`+(role==='admin'?`<div class="card">Despesas<b>${money(total('expense'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
+const costs=['materiais','pessoal','outros'].map(c=>({category:c,total:cashRows.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
 $('costChart').innerHTML='<h3>Custos por categoria</h3>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.category)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.category)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
 const name=id=>d.students.find(s=>s.id===id)?.name||'—';
 $('ledgerRows').innerHTML=list.map(r=>`<tr><td>${esc(r.paid_on.split('-').reverse().join('/'))}</td><td>${esc(r.description)}<br><small>${esc(r.method)}</small></td><td>${esc(r.category)}</td><td>${esc(name(r.student_id))}</td><td>${r.kind==='expense'?'−':''}${money(r.amount)}${r.card_fee>0?'<br><small>Taxa: '+money(r.card_fee)+'</small>':''}</td><td>${esc(r.settlement_status==='pending'?'Previsto '+(r.settlement_due_on||''):r.settlement_status==='received'?'Recebido':'Cancelado')}${r.kind==='income'&&r.settlement_status==='pending'?'<br><button type="button" data-confirm-settlement="'+esc(r.id)+'">Confirmar repasse</button>':''}</td></tr>`).join('')||'<tr><td colspan="6">Nenhum lançamento neste mês.</td></tr>';
@@ -32,6 +34,8 @@ function updateCardFields(){
  const fee=ledgerForm.elements.card_fee;
  if(card&&ledgerForm.elements.service_type.value==='pilates'&&Number(fee.value)===0)fee.value='5';
  if(card&&ledgerForm.elements.service_type.value!=='pilates'&&Number(fee.value)===5)fee.value='0';
+ ledgerForm.elements.installments.disabled=ledgerForm.elements.service_type.value==='pilates';
+ if(ledgerForm.elements.installments.disabled)ledgerForm.elements.installments.value='1';
  if(card)ledgerForm.elements.settlement_due_on.value=nextDay(ledgerForm.elements.paid_on.value||today);
 }
 ledgerForm.elements.method.onchange=updateCardFields;
@@ -43,8 +47,9 @@ $('newPayment').onclick=()=>openLedger('income');$('newExpense').onclick=()=>ope
 async function submit(form,action,dialog,message){form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await action(Object.fromEntries(new FormData(form)));await load();if(dialog)$(dialog).close();form.reset();notify(message);}catch(e){notify(e.message);}finally{button.disabled=false;}};}
 submit($('ledgerForm'),d=>{
  const gross=Number(d.amount),card=kind==='income'&&d.method==='Cartão',fee=card?Number(d.card_fee||0):0;
+ if(card&&!d.settlement_due_on)throw Error('Informe a previsão de repasse do cartão.');
  if(!Number.isFinite(gross)||gross<=0||fee<0||fee>=gross)throw Error('Confira o valor e a taxa do cartão.');
- const body={kind,description:d.description,paid_on:d.paid_on,method:d.method,student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category,amount:gross-fee,gross_amount:gross,card_fee:fee,service_type:kind==='income'?d.service_type:null,installments:card?Number(d.installments||1):1,settlement_due_on:card?d.settlement_due_on:null,settlement_status:card&&!d.settlement_received?'pending':'received',settled_on:card&&!d.settlement_received?null:d.paid_on};
+ const body={kind,description:d.description,paid_on:d.paid_on,method:d.method,student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category,amount:gross-fee,gross_amount:gross,card_fee:fee,service_type:kind==='income'?d.service_type:null,installments:card?Number(d.installments||1):1,settlement_due_on:card?d.settlement_due_on:null,settlement_status:card&&!d.settlement_received?'pending':'received',settled_on:card&&!d.settlement_received?null:(card?today:d.paid_on)};
  if(body.installments<1||body.installments>24||!Number.isInteger(body.installments))throw Error('Quantidade de parcelas inválida.');
  return api('/rest/v1/ledger',{method:'POST',body:JSON.stringify(body)});
 },'ledgerDialog','Lançamento registrado.');
