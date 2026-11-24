@@ -2,6 +2,8 @@ import {SUPABASE_URL,SUPABASE_KEY} from './config.mjs';
 import {api,esc,today,notify,allRows,currentStaff,currentData} from './cloud.mjs';
 const $=id=>document.getElementById(id),money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const sendingInvites=new Set();
+const expenseCategories=Array.from($('ledgerForm').elements.category.options, option=>[option.value,option.text]);
+const categoryLabels=new Map([['pagamento','Pagamento'],...expenseCategories]);
 let rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]},kind='income',loadVersion=0;
 $('financeMonth').value=today.slice(0,7);
 async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!role){rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};return;}
@@ -12,10 +14,10 @@ function render(){const d=currentData(),role=currentStaff()?.role;
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
 const list=rows.ledger.filter(r=>r.paid_on.startsWith($('financeMonth').value)),total=k=>list.filter(r=>r.kind===k).reduce((v,r)=>v+Number(r.amount),0);
 $('financeSummary').innerHTML=`<div class="card">Recebimentos<b>${money(total('income'))}</b></div>`+(role==='admin'?`<div class="card">Despesas<b>${money(total('expense'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
-const costs=['materiais','pessoal','outros'].map(c=>({category:c,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
-$('costChart').innerHTML='<h3>Custos por categoria</h3>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.category)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.category)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
+const costs=expenseCategories.map(([c,label])=>({label,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
+$('costChart').innerHTML='<h3>Custos por categoria</h3>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.label)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.label)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
 const name=id=>d.students.find(s=>s.id===id)?.name||'—';
-$('ledgerRows').innerHTML=list.map(r=>`<tr><td>${esc(r.paid_on.split('-').reverse().join('/'))}</td><td>${esc(r.description)}<br><small>${esc(r.method)}</small></td><td>${esc(r.category)}</td><td>${esc(name(r.student_id))}</td><td>${r.kind==='expense'?'−':''}${money(r.amount)}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum lançamento neste mês.</td></tr>';
+$('ledgerRows').innerHTML=list.map(r=>`<tr><td>${esc(r.paid_on.split('-').reverse().join('/'))}</td><td>${esc(r.description)}<br><small>${esc(r.method)}</small></td><td>${esc(categoryLabels.get(r.category)??r.category)}</td><td>${esc(name(r.student_id))}</td><td>${r.kind==='expense'?'−':''}${money(r.amount)}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum lançamento neste mês.</td></tr>';
 renderTeam();
 $('clinicalRows').innerHTML=rows.clinical_records.map(r=>`<article class="card"><h3>${esc(r.kind)} · ${esc(name(r.student_id))}</h3><small>${esc(r.recorded_on)} · ${esc(d.professionals.find(p=>p.user_id===r.professional_id)?.name||'Administrador')}</small><h4>Queixa e histórico</h4><p>${esc(r.complaint||'—')}</p><h4>Achados</h4><p>${esc(r.findings||'—')}</p><h4>Conduta / plano</h4><p>${esc(r.plan)}</p><button type="button" class="secondary" data-print-clinical="${esc(r.id)}">Imprimir atendimento</button></article>`).join('')||'<p>Nenhum registro clínico disponível.</p>';
 $('partnerRows').innerHTML=['Wellhub','TotalPass'].map(p=>{const r=rows.partner_connections.find(r=>r.partner===p);return `<article class="card"><h3>${p}</h3><strong>Conexão pendente</strong><p>Identificação: ${esc(r?.clinic_identifier||'Não cadastrada')}</p><p>${esc(r?.notes||'Aguardando credenciamento e acessos oficiais.')}</p></article>`;}).join('');}
