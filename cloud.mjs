@@ -146,6 +146,12 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.c
 $('newStudent').onclick=()=>{openStudent(null,'Pilates');};$('newPatient').onclick=()=>{openStudent(null,'Fisioterapia');};
 $('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
 $('studentForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(e.target));const isCreate=e.target.dataset.mode==='create';if(isCreate&&d.id)throw Error('Cadastro novo contém identificador anterior. Feche e abra novamente. Nenhum dado foi alterado.');if(!isCreate&&!d.id)throw Error('Identificador do aluno não encontrado. Nenhum dado foi alterado.');if(!d.name.trim())throw Error('Informe o nome.');if(d.activity==='Pilates'&&d.pilates_plan?.startsWith('monthly_')&&!d.plan_started_on)throw Error('Informe o início do pacote mensal.');if(d.plan_expires_on&&d.plan_started_on&&d.plan_expires_on<d.plan_started_on)throw Error('O vencimento não pode ser anterior ao início.');if(d.activity==='Fisioterapia'&&(!d.responsible_professional_id||Number(d.payment_installments)<1||Number(d.payment_installments)>24))throw Error('Selecione o profissional e confira as parcelas previstas.');if(d.birth_date&&(d.birth_date>day(new Date())||d.birth_date<'1900-01-01'))throw Error('Confira a data de nascimento.');const body={name:d.name.trim(),phone:d.phone.trim()||null,activity:d.activity,birth_date:d.birth_date||null,address:d.address.trim()||null,health_conditions:d.health_conditions.trim()||null,pilates_plan:d.activity==='Pilates'?(d.pilates_plan||null):null,pilates_reason:d.activity==='Pilates'?(d.pilates_reason.trim()||null):null,responsible_professional_id:d.responsible_professional_id||null,plan_started_on:d.activity==='Pilates'?(d.plan_started_on||null):null,plan_expires_on:d.activity==='Pilates'?(d.plan_expires_on||null):null,payment_method:d.activity==='Fisioterapia'?(d.payment_method||null):null,payment_installments:d.activity==='Fisioterapia'?(Number(d.payment_installments)||1):null,payment_notes:d.activity==='Fisioterapia'?(d.payment_notes?.trim()||null):null};const existing=d.id?data.students.find(x=>x.id===d.id):null;
+if(monthlyLessonLimit[body.pilates_plan]&&body.plan_expires_on&&
+ ['activity','pilates_plan','plan_started_on','plan_expires_on'].some(key=>existing?.[key]!==body[key])){
+ const minimumEnd=addCalendarDays(body.plan_started_on,29);
+ if(body.plan_expires_on<minimumEnd)throw Error(monthlyPackageDateMessage(minimumEnd));
+}
+
 if(d.id&&!existing)throw Error('Aluno não encontrado. Atualize a página.');
 const nameChanged=!!existing&&existing.name!==body.name;
 let confirmation=null;
@@ -226,6 +232,9 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-view-
 
 const monthlyLessonLimit={monthly_1:4,monthly_2:8,monthly_3:12};
 function addCalendarDays(iso,days){const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
+function monthlyPackageDateMessage(minimumEnd){
+ return 'O pacote mensal precisa de pelo menos 30 dias, contando o dia inicial. Vencimento mínimo: '+minimumEnd.split('-').reverse().join('/')+'.';
+}
 function packageWindow(student){
  if(!monthlyLessonLimit[student.pilates_plan])return null;
  const start=student.plan_started_on;
@@ -820,6 +829,8 @@ document.addEventListener('click',e=>{
   event.preventDefault();error.hidden=true;
   const start=startInput.value,end=endInput.value;
   if(!start||!end||end<start)return showError('Informe datas válidas. O vencimento deve ser igual ou posterior ao início.');
+  const minimumEnd=addCalendarDays(start,29);
+  if(end<minimumEnd)return showError(monthlyPackageDateMessage(minimumEnd));
   if(student.plan_expires_on&&start<=student.plan_expires_on&&!confirm('A nova vigência se sobrepõe ao pacote atual. Deseja continuar?'))return;
   if(!confirm('Confirmar renovação de '+student.name+' de '+fmt(start)+' até '+fmt(end)+'?'))return;
   const submit=dialog.querySelector('#monthlyRenewSubmit');submit.disabled=true;submit.textContent='Salvando...';
