@@ -1,5 +1,5 @@
 import {SUPABASE_URL,SUPABASE_KEY} from './config.mjs';
-import {api,esc,today,notify,allRows,currentStaff,currentData} from './cloud.mjs';
+import {api,esc,day,today,notify,allRows,currentStaff,currentData} from './cloud.mjs';
 const $=id=>document.getElementById(id),money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const sendingInvites=new Set();
 const expenseCategories=Array.from($('ledgerForm').elements.category.options, option=>[option.value,option.text]);
@@ -10,7 +10,50 @@ async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!
 const tables=role==='admin'?Object.keys(rows):role==='professional'?['clinical_records']:[];
 try{const values=await Promise.all(tables.map(t=>allRows(t,`${t==='partner_connections'?'partner':'created_at'}.desc`,t==='team_members'?'id,name,email,username,role,registration,active,user_id,created_at,invited_at,invite_expires_at,accepted_at':'*')));if(version!==loadVersion||role!==currentStaff()?.role)return;rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};tables.forEach((t,i)=>rows[t]=values[i]);render();}catch(e){notify(e.message);}}
 window.addEventListener('vitale:refresh',load);
+function physioMonthlyTotals(data, clinicalRecords, ledger){
+ const patientIds=new Set(data.students.filter(student=>student.activity==='Fisioterapia').map(student=>student.id));
+ const months=new Map();
+ function count(date,studentId,type){
+  if(!date||!studentId)return;
+  const month=date.slice(0,7);
+  if(!months.has(month))months.set(month,{attended:new Set(),paid:new Set()});
+  months.get(month)[type].add(studentId);
+ }
+ for(const appointment of data.appointments){
+  if(appointment.activity==='Fisioterapia'&&appointment.status==='completed'){
+   count(day(appointment.starts_at),appointment.student_id,'attended');
+  }
+ }
+ for(const record of clinicalRecords){
+  if(patientIds.has(record.student_id)&&['Avaliação','Evolução'].includes(record.kind)){
+   count(record.recorded_on,record.student_id,'attended');
+  }
+ }
+ for(const payment of ledger){
+  if(payment.kind==='income'&&(!payment.settlement_status||payment.settlement_status==='received')&&patientIds.has(payment.student_id)){
+   count(payment.paid_on,payment.student_id,'paid');
+  }
+ }
+ return months;
+}
+function renderPhysioMonthlyHistory(data,role){
+ const panel=$('physioMonthlyHistory');
+ if(role!=='admin'){panel.innerHTML='';return;}
+ const selected=$('financeMonth').value;
+ const months=physioMonthlyTotals(data,rows.clinical_records,rows.ledger);
+ const label=month=>month.split('-').reverse().join('/');
+ const monthRows=[...months.keys()].sort().reverse().map(month=>{
+  const {attended,paid}=months.get(month);
+  return '<tr><td>'+esc(label(month))+'</td><td>'+attended.size+'</td><td>'+paid.size+'</td></tr>';
+ }).join('');
+ panel.innerHTML='<h3>Fisioterapia por mês</h3>'+
+  (selected?'<p><strong>'+esc(label(selected))+'</strong> · '+(months.get(selected)?.attended.size||0)+' paciente(s) com atendimento registrado</p>':'')+
+  '<p><small>Cada paciente conta uma vez por mês. O atendimento vem da agenda concluída ou de avaliação/evolução no prontuário. O pagamento é contado pela data no Financeiro.</small></p>'+
+  '<table><thead><tr><th>Mês</th><th>Pacientes atendidos</th><th>Pacientes com pagamento</th></tr></thead><tbody>'+
+  (monthRows||'<tr><td colspan="3">Nenhum registro de fisioterapia disponível.</td></tr>')+'</tbody></table>';
+}
 function render(){const d=currentData(),role=currentStaff()?.role;
+renderPhysioMonthlyHistory(d,role);
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
 const list=rows.ledger.filter(r=>r.paid_on.startsWith($('financeMonth').value)),total=k=>list.filter(r=>r.kind===k).reduce((v,r)=>v+Number(r.amount),0);
 $('financeSummary').innerHTML=`<div class="card">Recebimentos<b>${money(total('income'))}</b></div>`+(role==='admin'?`<div class="card">Despesas<b>${money(total('expense'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
