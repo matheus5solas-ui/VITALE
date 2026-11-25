@@ -58,9 +58,13 @@ function renderPhysioMonthlyHistory(data,role){
 function render(){const d=currentData(),role=currentStaff()?.role;
 renderPhysioMonthlyHistory(d,role);
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
-const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled');
+const activity=$('ledgerActivity').value;
+const matchingStudents=new Set(d.students.filter(student=>student.activity===activity).map(student=>student.id));
+const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&
+ (!activity||(r.kind==='income'&&matchingStudents.has(r.student_id))));
+$('costChart').classList.toggle('hidden',Boolean(activity)||role!=='admin');
 const total=(kind,status='received')=>list.filter(r=>r.kind===kind&&(r.settlement_status||'received')===status).reduce((sum,r)=>sum+Number(r.amount),0);
-$('financeSummary').innerHTML=`<div class="card">Recebimentos<b>${money(total('income'))}</b></div>`+(role==='admin'?`<div class="card">Despesas pagas<b>${money(total('expense'))}</b></div><div class="card">Despesas em aberto<b>${money(total('expense','pending'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
+$('financeSummary').innerHTML=`<div class="card">Recebimentos${activity?' de '+esc(activity):''}<b>${money(total('income'))}</b></div>`+(role==='admin'&&!activity?`<div class="card">Despesas pagas<b>${money(total('expense'))}</b></div><div class="card">Despesas em aberto<b>${money(total('expense','pending'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
 const costs=expenseCategories.map(([c,label])=>({label,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
 $('costChart').innerHTML='<h3>Custos por categoria</h3><p><small>Inclui despesas pagas e em aberto na competência selecionada.</small></p>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.label)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.label)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
 const name=id=>d.students.find(s=>s.id===id)?.name||'—';
@@ -75,13 +79,11 @@ function renderLedger(entries,students,role){
  const names=new Map(students.map(student=>[student.id,student]));
  const normalize=text=>String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
  const query=normalize($('ledgerSearch').value.trim());
- const activity=$('ledgerActivity').value;
  const date=r=>r.settlement_status==='pending'?(r.settlement_due_on||r.paid_on):r.paid_on;
  const formatDate=value=>esc(value.split('-').reverse().join('/'));
  const matching=entries.filter(r=>{
   if(r.kind!==ledgerKind)return false;
   const student=names.get(r.student_id);
-  if(!expense&&activity&&student?.activity!==activity)return false;
   return normalize([r.description,r.method,student?.name,categoryLabels.get(r.category)].join(' ')).includes(query);
  }).sort((a,b)=>{
   const pendingA=a.settlement_status==='pending',pendingB=b.settlement_status==='pending';
@@ -121,12 +123,16 @@ function selectLedger(kind){
  }
  $('ledgerSearch').value='';
  $('ledgerSearch').placeholder=expense?'Buscar despesa ou categoria':'Buscar aluno, paciente ou pagamento';
- $('ledgerActivity').classList.toggle('hidden',expense);
  render();
 }
 $('expenseLedgerTab').onclick=()=>selectLedger('expense');
 $('paymentLedgerTab').onclick=()=>selectLedger('income');
-$('ledgerSearch').oninput=$('ledgerActivity').onchange=()=>{ledgerPage=0;render();};
+$('ledgerSearch').oninput=()=>{ledgerPage=0;render();};
+$('ledgerActivity').onchange=()=>{
+ const filtered=Boolean($('ledgerActivity').value);
+ $('expenseLedgerTab').classList.toggle('hidden',filtered);
+ selectLedger(filtered?'income':'expense');
+};
 $('ledgerPrevious').onclick=()=>{ledgerPage=Math.max(0,ledgerPage-1);render();};
 $('ledgerNext').onclick=()=>{ledgerPage++;render();};
 function printClinical(record){
