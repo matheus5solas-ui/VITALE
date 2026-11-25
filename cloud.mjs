@@ -120,7 +120,7 @@ $('faceLinkForm').addEventListener('submit',async e=>{
 
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
- $('countStudents').textContent=data.students.filter(s=>s.activity==='Pilates').length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
+ $('countStudents').textContent=data.students.filter(s=>s.active&&s.activity==='Pilates').length;$('countPhysioPatients').textContent=data.students.filter(s=>s.active&&s.activity==='Fisioterapia').length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
  const absenceSummary=$('weeklyAbsenceSummary');
  if(absenceSummary){
   const rows=(data.pilates_weekly_absences||[]).filter(w=>w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
