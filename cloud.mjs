@@ -566,6 +566,15 @@ function renderClasses(){
   $('classProfessionalCount').textContent=total+' aluno(s) de Pilates '+(id?'com o profissional selecionado':'ativo(s) no total');
  }
  const filteredByProfessional=canFilterProfessional&&professionalFilter.value?eligible.filter(s=>professionalFilter.value==='__unknown__'?s.responsible_professional_id&&!data.professionals.some(p=>p.user_id===s.responsible_professional_id):s.responsible_professional_id===professionalFilter.value):eligible;
+ const renewals=filteredByProfessional.filter(student=>{
+  const total=student.pilates_plan==='test_2'?2:monthlyLessonLimit[student.pilates_plan];
+  const lessons=student.pilates_plan==='test_2'?classAttendance(student):packageAttendances(student);
+  return total>0&&lessons.length>=total;
+ });
+ const reminder=$('packageRenewalReminder');
+ reminder.classList.toggle('hidden',!renewals.length);
+ reminder.innerHTML=renewals.length?'<strong>Pacotes esgotados · renovação pendente</strong><ul>'+
+  renewals.map(student=>'<li>'+esc(student.name)+' <button type="button" class="secondary" data-whatsapp-receipt="'+esc(student.id)+'">Enviar pelo WhatsApp</button></li>').join('')+'</ul>':'';
  const studentFilter=$('classStudentFilter');
  const previousSelection=studentFilter.value;
  const nameCounts=new Map();
@@ -706,7 +715,7 @@ document.addEventListener('click',e=>{
  const inPeriod=d=>!period||(d>=period.start&&d<=period.end);
  const lessons=(student.pilates_plan==='test_2'?classAttendance(student):packageAttendances(student)).slice().sort((a,b)=>a.occurred_at.localeCompare(b.occurred_at));
  const total=student.pilates_plan==='test_2'?2:monthlyLessonLimit[student.pilates_plan]||0;
- const used=new Set(lessons.map(t=>day(t.occurred_at))).size;
+ const used=lessons.length;
  const adjustments=(data.pilates_class_adjustments||[]).filter(a=>a.student_id===student.id&&inPeriod(a.class_date));
  const absenceDates=[...new Set(adjustments.filter(a=>['absent','excused','made_up'].includes(a.status)).map(a=>a.class_date))].filter(d=>!lessons.some(t=>day(t.occurred_at)===d)).sort();
  const weekly=(data.pilates_weekly_absences||[]).filter(w=>w.student_id===student.id&&w.status==='reviewed'&&(!period||(w.week_start<=period.end&&w.week_end>=period.start))).reduce((n,w)=>n+w.missing_classes,0);
@@ -716,7 +725,7 @@ document.addEventListener('click',e=>{
  const format=d=>d.split('-').reverse().join('/');
  const plan={monthly_1:'Mensal - 1x por semana',monthly_2:'Mensal - 2x por semana',monthly_3:'Mensal - 3x por semana',test_2:'Teste - 2 aulas'}[student.pilates_plan]||'Nao informado';
  const presenceDates=[...new Set(lessons.map(t=>day(t.occurred_at)))].sort();
- const availableMakeups=Math.max(0,Math.min(absentCount,limit)-madeUp);
+ const availableMakeups=Math.min(Math.max(0,total-used),Math.max(0,Math.min(absentCount,limit)-madeUp));
  const lines=[
   '🌿 *VITALE | Fisioterapia & Pilates*',
   '📋 *RELATÓRIO DE AULAS*',
@@ -741,7 +750,8 @@ document.addEventListener('click',e=>{
   '🔄 Disponíveis: '+availableMakeups,
   '',
   '💚 Obrigado por fazer parte da Vitale!',
-  '_Registro de frequência; não comprova atendimento concluído._'
+  '_Registro de frequência; não comprova atendimento concluído._',
+  ...(total>0&&used>=total?['','Todas as aulas do seu pacote foram realizadas. Aguardamos você na próxima aula! Para renovar o pacote, fale com a nossa recepção.']:[])
  ];
  // Abre a conversa diretamente no WhatsApp Web, com o texto pronto para revisao.
  // A mensagem nao e enviada automaticamente: o atendente confirma o envio no WhatsApp Business.
