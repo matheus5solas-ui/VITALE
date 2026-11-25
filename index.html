@@ -43,14 +43,13 @@ body:has(#workspace.hidden){min-height:100vh;background:#e8eee7 url("data:image/
 <p id="faceStatus" role="status" style="font-size:12px;color:#657970"></p>
 <p style="font-size:12px;color:#657970">A integração recebe reconhecimentos e registra presenças, evitando duplicidades. Alunos sem agendamento compatível podem exigir conferência. Reconhecimento facial não comprova atendimento concluído. O cadastro e a exclusão da biometria são feitos no aparelho, não nesta tela.</p>
 </section>
-<section id="finance" class="hidden"><div class="toolbar"><label>Mês<input id="financeMonth" type="month"></label><button id="newPayment">Lançar pagamento</button><button id="newExpense" data-roles="admin">Lançar despesa</button></div><div id="financeSummary" class="cards"></div><div id="physioMonthlyHistory" class="card" data-roles="admin"></div><div id="costChart" data-roles="admin" class="card"></div><div class="card finance-ledger">
+<section id="finance" class="hidden"><div class="toolbar"><label>Mês<input id="financeMonth" type="month"></label><label>Atividade<select id="ledgerActivity"><option value="">Todas as atividades</option><option>Pilates</option><option>Fisioterapia</option></select></label><button id="newPayment">Lançar pagamento</button><button id="newExpense" data-roles="admin">Lançar despesa</button></div><div id="financeSummary" class="cards"></div><div id="physioMonthlyHistory" class="card" data-roles="admin"></div><div id="costChart" data-roles="admin" class="card"></div><div class="card finance-ledger">
   <div class="toolbar finance-ledger-tabs" role="group" aria-label="Tipo de lançamento">
     <button type="button" id="expenseLedgerTab" aria-pressed="true">Despesas</button>
     <button type="button" id="paymentLedgerTab" class="secondary" aria-pressed="false">Histórico de pagamentos</button>
   </div>
   <div class="toolbar finance-ledger-filters">
     <input type="search" id="ledgerSearch" aria-label="Buscar lançamentos" placeholder="Buscar despesa ou categoria">
-    <select id="ledgerActivity" class="hidden" aria-label="Filtrar pagamentos por atividade"><option value="">Todas as atividades</option><option>Pilates</option><option>Fisioterapia</option></select>
   </div>
   <div class="finance-ledger-scroll"><table><thead id="ledgerHead"></thead><tbody id="ledgerRows"></tbody></table></div>
   <div class="finance-ledger-pagination">
