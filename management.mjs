@@ -31,7 +31,7 @@ function physioMonthlyTotals(data, clinicalRecords, ledger){
  }
  for(const payment of ledger){
   if(payment.kind==='income'&&(!payment.settlement_status||payment.settlement_status==='received')&&patientIds.has(payment.student_id)){
-   count(payment.paid_on,payment.student_id,'paid');
+   count(payment.competence_month||payment.paid_on,payment.student_id,'paid');
   }
  }
  return months;
@@ -48,7 +48,7 @@ function renderPhysioMonthlyHistory(data,role){
  }).join('');
  panel.innerHTML='<h3>Fisioterapia por mês</h3>'+
   (selected?'<p><strong>'+esc(label(selected))+'</strong> · '+(months.get(selected)?.attended.size||0)+' paciente(s) com atendimento registrado</p>':'')+
-  '<p><small>Cada paciente conta uma vez por mês. O atendimento vem da agenda concluída ou de avaliação/evolução no prontuário. O pagamento é contado pela data no Financeiro.</small></p>'+
+  '<p><small>Cada paciente conta uma vez por mês. O atendimento vem da agenda concluída ou de avaliação/evolução no prontuário. O pagamento é contado pela competência no Financeiro.</small></p>'+
   '<table><thead><tr><th>Mês</th><th>Pacientes atendidos</th><th>Pacientes com pagamento</th></tr></thead><tbody>'+
   (monthRows||'<tr><td colspan="3">Nenhum registro de fisioterapia disponível.</td></tr>')+'</tbody></table>';
 }
@@ -156,7 +156,7 @@ function updateLedgerFields(){
  }
  const expense=kind==='expense',pending=expense&&ledgerForm.elements.settlement_status.value==='pending';
  for(const [label,name,visible,required] of [
-  ['expenseCompetenceLabel','competence_month',expense,expense],
+  ['expenseCompetenceLabel','competence_month',true,true],
   ['expenseDueLabel','settlement_due_on',expense,pending],
   ['expenseStatusLabel','settlement_status',expense,expense],
   ['ledgerPaidDateLabel','paid_on',!pending,!pending]
@@ -215,16 +215,16 @@ submit(ledgerForm,async ({physio_mode,physio_sessions,installments,competence_mo
  const detail=physio_mode?`Fisioterapia · ${physio_mode} · ${physio_sessions} sessão(ões)`:'';
  const description=[detail,d.description.trim()].filter(Boolean).join(' · ');
  const payload={...d,description,kind,amount:Number(d.amount),installments:Number(installments||1),
-  student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category};
+  student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category,competence_month:competence_month+'-01'};
  if(kind==='expense'){
-  Object.assign(payload,{competence_month:competence_month+'-01',settlement_due_on:settlement_due_on||null,settlement_status,
+  Object.assign(payload,{settlement_due_on:settlement_due_on||null,settlement_status,
    paid_on:settlement_status==='pending'?settlement_due_on:d.paid_on,
    settled_on:settlement_status==='pending'?null:d.paid_on});
  }
  const path='/rest/v1/ledger'+(settlingExpense?'?id=eq.'+settlingExpense.id+'&kind=eq.expense&settlement_status=eq.pending':'');
  const result=await api(path,{method:settlingExpense?'PATCH':'POST',body:JSON.stringify(payload)});
  if(settlingExpense&&!result?.length)throw Error('Esta despesa já foi atualizada. Recarregue o Financeiro.');
- if(kind==='expense')$('financeMonth').value=competence_month;
+ $('financeMonth').value=competence_month;
 },'ledgerDialog','Lançamento registrado.');
 submit($('teamForm'),async d=>{
  const existing=rows.team_members.find(r=>r.id===d.id);
