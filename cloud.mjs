@@ -38,6 +38,12 @@ async function api(path,options={},retry=true){
   const message=known.find(m=>error.message?.includes(m));
   throw Error(message||('Falha ao registrar presença histórica (HTTP '+response.status+(error.code?', código '+error.code:'')+'). Informe este código ao administrador.'));
  }
+ if(!response.ok&&path==='/rest/v1/rpc/vitale_link_facial_student'){
+  const error=await response.json().catch(()=>({}));
+  const message=error.message||'';
+  if(message.includes('ID já pertence a outro aluno'))throw Error('Este ID já está vinculado a outro cadastro, que pode estar arquivado. Confira o vínculo antes de reutilizá-lo.');
+  if(message.includes('Aluno já possui ID facial'))throw Error('Este aluno já possui um ID facial. Use Editar ID facial.');
+ }
  if(!response.ok)throw Error(response.status===403?'Seu perfil não permite esta ação.':response.status===409?'Já existe um registro com esses dados.':'Não foi possível salvar ou carregar. Tente novamente.');
  return response.status===204?null:response.json();
 }
