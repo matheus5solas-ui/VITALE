@@ -855,6 +855,7 @@ document.addEventListener('click',e=>{
  '<fieldset style="display:grid;gap:12px;border:1px solid #d9e5df;border-radius:8px"><legend>Pagamento recebido</legend>'+
  '<label>Valor total (R$)<input name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" required value="'+esc(planPrice)+'"></label>'+
  '<label>Data do pagamento<input name="paid_on" type="date" required value="'+esc(paidToday)+'" max="'+esc(paidToday)+'"></label>'+
+ '<label>Mês de competência<input name="competence_month" type="month" required value="'+esc(paidToday.slice(0,7))+'"></label>'+
  '<label>Parcelas, se pagar no cartão<input name="installments" type="number" min="1" max="24" step="1" value="1"></label>'+
  '<label><input name="already_recorded" type="checkbox" style="width:auto"> Pagamento já lançado no Financeiro</label>'+
  '<small>Escolha a forma de pagamento para renovar e registrar o valor recebido.</small></fieldset>':
@@ -873,10 +874,10 @@ document.addEventListener('click',e=>{
    manualSubmit.disabled=saving;
    return;
   }
-  const {installments,amount,paid_on,already_recorded}=form.elements;
+  const {installments,amount,paid_on,competence_month,already_recorded}=form.elements;
   const record=!already_recorded.checked;
   already_recorded.disabled=saving;
-  for(const input of [amount,paid_on,installments])input.disabled=!record||saving;
+  for(const input of [amount,paid_on,competence_month,installments])input.disabled=!record||saving;
   for(const button of submitButtons){
    const visible=button===manualSubmit?!record:record;
    button.classList.toggle('hidden',!visible);
@@ -906,11 +907,12 @@ document.addEventListener('click',e=>{
   syncPaymentFields();
   try{
    if(recordPayment){
-    const {amount,paid_on,installments}=form.elements;
+    const {amount,paid_on,competence_month,installments}=form.elements;
     await api('/rest/v1/rpc/renew_monthly_package_with_payment',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({
      p_student_id:student.id,p_plan:student.pilates_plan,
      p_previous_start:student.plan_started_on||null,p_previous_end:student.plan_expires_on||null,
      p_start:start,p_end:end,p_amount:Number(amount.value),p_paid_on:paid_on.value,
+     p_competence_month:competence_month.value+'-01',
      p_method:method,p_installments:method==='Cartão'?Number(installments.value||1):1
     })});
    }else{
