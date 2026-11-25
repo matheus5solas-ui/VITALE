@@ -824,17 +824,41 @@ document.addEventListener('click',e=>{
  dialog.style.cssText='width:min(92vw,520px);max-height:90vh;overflow:auto;border:1px solid #d9e5df;border-radius:16px;padding:0;box-shadow:0 22px 65px #0003;color:#163d32;background:white';
  const suggested=student.plan_expires_on?addCalendarDays(student.plan_expires_on,1):today;
  const fmt=d=>d?d.split('-').reverse().join('/'):'Não informado';
+ const canRecordPayment=staff?.role==='admin';
+ const planPrice={monthly_1:100,monthly_2:160,monthly_3:190}[student.pilates_plan];
+ const paidToday=day(new Date());
  dialog.innerHTML='<form id="monthlyRenewForm" style="padding:26px;display:grid;gap:17px">'+
  '<div><h2 style="margin:0 0 6px;font-size:22px;color:#153e32">Renovar pacote de Pilates</h2><p style="margin:0;color:#586d63">Aluno: <strong>'+esc(student.name)+'</strong></p></div>'+
  '<div style="background:#f2f7f4;border-radius:10px;padding:12px 14px;font-size:14px"><strong>Pacote atual</strong><div>De '+esc(fmt(student.plan_started_on))+' até '+esc(fmt(student.plan_expires_on))+'</div><small>As presenças anteriores serão preservadas.</small></div>'+
  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px">'+
  '<label style="display:grid;gap:7px;font-weight:600">Início da renovação<input name="start" type="date" required value="'+esc(suggested)+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bccfc5;border-radius:8px;font:inherit"></label>'+
  '<label style="display:grid;gap:7px;font-weight:600">Válido até<input name="end" type="date" required value="'+esc(addCalendarDays(suggested,29))+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bccfc5;border-radius:8px;font:inherit"></label></div>'+
- '<p style="margin:0;font-size:13px;color:#586d63">A renovação não registra pagamento automaticamente.</p>'+
+ (canRecordPayment?
+ '<fieldset style="display:grid;gap:12px;border:1px solid #d9e5df;border-radius:8px"><legend>Pagamento recebido</legend>'+
+ '<label>Valor total (R$)<input name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" required value="'+esc(planPrice)+'"></label>'+
+ '<label>Data do pagamento<input name="paid_on" type="date" required value="'+esc(paidToday)+'" max="'+esc(paidToday)+'"></label>'+
+ '<label>Forma de pagamento<select name="method" required><option value="">Selecione</option><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Transferência</option><option>Boleto</option></select></label>'+
+ '<label id="renewInstallments" class="hidden">Parcelas do cartão<input name="installments" type="number" min="1" max="24" step="1" value="1" disabled></label>'+
+ '<label><input name="already_recorded" type="checkbox" style="width:auto"> Pagamento já lançado no Financeiro</label>'+
+ '<small>O pagamento será registrado no Financeiro ao confirmar, de acordo com os dados acima.</small></fieldset>':
+ '<p style="margin:0;font-size:13px;color:#586d63">O lançamento no Financeiro é feito pelo administrador.</p>')+
  '<p id="monthlyRenewError" role="alert" style="margin:0;color:#a32626" hidden></p>'+
  '<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap"><button type="button" class="secondary" id="monthlyRenewCancel">Cancelar</button><button type="submit" id="monthlyRenewSubmit">Confirmar renovação</button></div></form>';
  document.body.append(dialog);
  const form=dialog.querySelector('form'),startInput=form.elements.start,endInput=form.elements.end;
+ if(canRecordPayment){
+  const {method,installments,amount,paid_on,already_recorded}=form.elements;
+  function syncPaymentFields(){
+   const record=!already_recorded.checked;
+   for(const input of [amount,paid_on,method])input.disabled=!record;
+   const card=record&&method.value==='Cartão';
+   installments.disabled=!card;
+   installments.required=card;
+   dialog.querySelector('#renewInstallments').classList.toggle('hidden',!card);
+  }
+  method.onchange=syncPaymentFields;
+  already_recorded.onchange=syncPaymentFields;
+ }
  const error=dialog.querySelector('#monthlyRenewError');
  const showError=message=>{error.textContent=message;error.hidden=false;};
  const close=()=>dialog.close();
@@ -851,10 +875,23 @@ document.addEventListener('click',e=>{
   if(!confirm('Confirmar renovação de '+student.name+' de '+fmt(start)+' até '+fmt(end)+'?'))return;
   const submit=dialog.querySelector('#monthlyRenewSubmit');submit.disabled=true;submit.textContent='Salvando...';
   try{
-   const filter='/rest/v1/students?id=eq.'+student.id+'&plan_started_on='+(student.plan_started_on?'eq.'+student.plan_started_on:'is.null')+'&plan_expires_on='+(student.plan_expires_on?'eq.'+student.plan_expires_on:'is.null');
-   const rows=await api(filter,{method:'PATCH',body:JSON.stringify({plan_started_on:start,plan_expires_on:end})});
-   if(!rows?.length)throw Error('O pacote foi alterado por outra pessoa. Atualize a página antes de tentar novamente.');
-   close();await reload();notify('Pacote renovado até '+fmt(end)+'. Histórico preservado.');
+   const recordPayment=canRecordPayment&&!form.elements.already_recorded.checked;
+   if(recordPayment){
+    const {amount,paid_on,method,installments}=form.elements;
+    await api('/rest/v1/rpc/renew_monthly_package_with_payment',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({
+     p_student_id:student.id,p_plan:student.pilates_plan,
+     p_previous_start:student.plan_started_on||null,p_previous_end:student.plan_expires_on||null,
+     p_start:start,p_end:end,p_amount:Number(amount.value),p_paid_on:paid_on.value,
+     p_method:method.value,p_installments:installments.disabled?1:Number(installments.value)
+    })});
+   }else{
+    const filter='/rest/v1/students?id=eq.'+student.id+'&plan_started_on='+(student.plan_started_on?'eq.'+student.plan_started_on:'is.null')+'&plan_expires_on='+(student.plan_expires_on?'eq.'+student.plan_expires_on:'is.null');
+    const rows=await api(filter,{method:'PATCH',body:JSON.stringify({plan_started_on:start,plan_expires_on:end})});
+    if(!rows?.length)throw Error('O pacote foi alterado por outra pessoa. Atualize a página antes de tentar novamente.');
+   }
+   close();
+   try{await reload();}catch{notify('Renovação salva. Recarregue a página para atualizar os dados.');return;}
+   notify('Pacote renovado até '+fmt(end)+'. '+(recordPayment?'Pagamento registrado no Financeiro.':'Histórico preservado.'));
   }catch(err){showError('Não foi possível renovar: '+(err.message||err));}finally{submit.disabled=false;submit.textContent='Confirmar renovação';}
  };
  dialog.showModal();
