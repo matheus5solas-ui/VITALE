@@ -754,8 +754,7 @@ document.addEventListener('click',e=>{
   '🔄 Disponíveis: '+availableMakeups,
   '',
   '💚 Obrigado por fazer parte da Vitale!',
-  '_Registro de frequência; não comprova atendimento concluído._',
-  ...(total>0&&used>=total?['','Todas as aulas do seu pacote foram realizadas. Aguardamos você na próxima aula! Para renovar o pacote, fale com a nossa recepção.']:[])
+  ...(total>0&&used>=total?['','','Todas as aulas do seu pacote foram realizadas. Aguardamos você na próxima aula!']:[])
  ];
  // Abre a conversa diretamente no WhatsApp Web, com o texto pronto para revisao.
  // A mensagem nao e enviada automaticamente: o atendente confirma o envio no WhatsApp Business.
