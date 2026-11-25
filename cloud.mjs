@@ -631,16 +631,15 @@ function renderClasses(){
  }).join('')||'<p>Nenhum aluno de Pilates disponível.</p>';
 }
 document.addEventListener('click',async e=>{
- const button=e.target.closest('[data-void-attendance]');if(!button)return;
+ const button=e.target.closest('[data-void-attendance]');if(!button||button.disabled)return;
  if(staff?.role!=='admin')return notify('Somente administradores podem anular presenças.');
  const a=data.attendance.find(t=>t.id===button.dataset.voidAttendance);
  if(!a||(data.attendance_voids||[]).some(v=>v.attendance_id===a.id))return notify('Presença não encontrada ou já anulada.');
  const student=data.students.find(s=>s.id===a.student_id);
  const when=new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'});
- const reason=prompt('Motivo da anulação de '+(student?.name||'aluno')+' em '+when+' (mínimo de 10 caracteres):');
+ const reason=prompt('Motivo da anulação de '+(student?.name||'aluno')+' em '+when+' (entre 10 e 500 caracteres).\n\nAo clicar em OK, a presença será anulada e a aula voltará ao saldo, se ainda estiver na vigência. O registro facial ficará no histórico.');
  if(reason===null)return;
  if(reason.trim().length<10||reason.trim().length>500)return notify('Informe um motivo entre 10 e 500 caracteres.');
- if(!confirm('Confirma anular esta presença? Ela deixará de consumir uma aula, mas o registro facial será preservado.'))return;
  button.disabled=true;
  try{
   await api('/rest/v1/attendance_voids',{method:'POST',body:JSON.stringify({attendance_id:a.id,student_id:a.student_id,reason:reason.trim(),voided_by:staff.user_id})});
