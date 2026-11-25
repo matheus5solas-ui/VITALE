@@ -19,6 +19,9 @@ function physioMonthlyTotals(data, clinicalRecords, ledger){
   if(!months.has(month))months.set(month,{attended:new Set(),paid:new Set()});
   months.get(month)[type].add(studentId);
  }
+ for(const student of data.students){
+  if(patientIds.has(student.id))count(student.physio_first_visit_on,student.id,'attended');
+ }
  for(const appointment of data.appointments){
   if(appointment.activity==='Fisioterapia'&&appointment.status==='completed'){
    count(day(appointment.starts_at),appointment.student_id,'attended');
@@ -48,7 +51,7 @@ function renderPhysioMonthlyHistory(data,role){
  }).join('');
  panel.innerHTML='<h3>Fisioterapia por mês</h3>'+
   (selected?'<p><strong>'+esc(label(selected))+'</strong> · '+(months.get(selected)?.attended.size||0)+' paciente(s) com atendimento registrado</p>':'')+
-  '<p><small>Cada paciente conta uma vez por mês. O atendimento vem da agenda concluída ou de avaliação/evolução no prontuário. O pagamento é contado pela competência no Financeiro.</small></p>'+
+  '<p><small>Cada paciente conta uma vez por mês. O atendimento vem do primeiro atendimento registrado no cadastro, da agenda concluída ou de avaliação/evolução no prontuário. O pagamento é contado pela competência no Financeiro.</small></p>'+
   '<table><thead><tr><th>Mês</th><th>Pacientes atendidos</th><th>Pacientes com pagamento</th></tr></thead><tbody>'+
   (monthRows||'<tr><td colspan="3">Nenhum registro de fisioterapia disponível.</td></tr>')+'</tbody></table>';
 }
