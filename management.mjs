@@ -17,7 +17,7 @@ $('financeSummary').innerHTML=`<div class="card">Recebimentos<b>${money(total('i
 const costs=expenseCategories.map(([c,label])=>({label,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
 $('costChart').innerHTML='<h3>Custos por categoria</h3>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.label)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.label)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
 const name=id=>d.students.find(s=>s.id===id)?.name||'—';
-$('ledgerRows').innerHTML=list.map(r=>`<tr><td>${esc(r.paid_on.split('-').reverse().join('/'))}</td><td>${esc(r.description)}<br><small>${esc(r.method)}</small></td><td>${esc(categoryLabels.get(r.category)??r.category)}</td><td>${esc(name(r.student_id))}</td><td>${r.kind==='expense'?'−':''}${money(r.amount)}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum lançamento neste mês.</td></tr>';
+$('ledgerRows').innerHTML=list.map(r=>`<tr><td>${esc(r.paid_on.split('-').reverse().join('/'))}</td><td>${esc(r.description)}<br><small>${esc(r.method)}${r.method==='Cartão'?' · '+(r.installments||1)+'x':''}</small></td><td>${esc(categoryLabels.get(r.category)??r.category)}</td><td>${esc(name(r.student_id))}</td><td>${r.kind==='expense'?'−':''}${money(r.amount)}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum lançamento neste mês.</td></tr>';
 renderTeam();
 $('clinicalRows').innerHTML=rows.clinical_records.map(r=>`<article class="card"><h3>${esc(r.kind)} · ${esc(name(r.student_id))}</h3><small>${esc(r.recorded_on)} · ${esc(d.professionals.find(p=>p.user_id===r.professional_id)?.name||'Administrador')}</small><h4>Queixa e histórico</h4><p>${esc(r.complaint||'—')}</p><h4>Achados</h4><p>${esc(r.findings||'—')}</p><h4>Conduta / plano</h4><p>${esc(r.plan)}</p><button type="button" class="secondary" data-print-clinical="${esc(r.id)}">Imprimir atendimento</button></article>`).join('')||'<p>Nenhum registro clínico disponível.</p>';
 $('partnerRows').innerHTML=['Wellhub','TotalPass'].map(p=>{const r=rows.partner_connections.find(r=>r.partner===p);return `<article class="card"><h3>${p}</h3><strong>Conexão pendente</strong><p>Identificação: ${esc(r?.clinic_identifier||'Não cadastrada')}</p><p>${esc(r?.notes||'Aguardando credenciamento e acessos oficiais.')}</p></article>`;}).join('');}
@@ -35,10 +35,57 @@ function printClinical(record){
 }
 document.addEventListener('click',event=>{const button=event.target.closest('[data-print-clinical]');if(!button)return;const record=rows.clinical_records.find(r=>r.id===button.dataset.printClinical);if(record)printClinical(record);});
 $('financeMonth').onchange=render;
-function openLedger(k){kind=k;$('ledgerForm').reset();$('ledgerTitle').textContent=k==='income'?'Lançar pagamento':'Lançar despesa';$('paymentStudentLabel').classList.toggle('hidden',k==='expense');$('paymentStudent').required=k==='income';$('expenseCategoryLabel').classList.toggle('hidden',k==='income');$('ledgerForm').elements.paid_on.value=today;$('ledgerDialog').showModal();}
+const ledgerForm=$('ledgerForm');
+function updateLedgerFields(){
+ const patient=currentData().students.find(student=>student.id===$('paymentStudent').value);
+ const physio=kind==='income'&&patient?.activity==='Fisioterapia';
+ const card=kind==='income'&&ledgerForm.elements.method.value==='Cartão';
+ for(const [label,field,visible] of [
+  ['physioModeLabel',ledgerForm.elements.physio_mode,physio],
+  ['physioSessionsLabel',ledgerForm.elements.physio_sessions,physio],
+  ['cardInstallmentsLabel',ledgerForm.elements.installments,card]
+ ]){
+  $(label).classList.toggle('hidden',!visible);
+  field.disabled=!visible;
+  field.required=Boolean(visible);
+ }
+ ledgerForm.elements.description.required=!physio;
+ ledgerForm.elements.description.maxLength=physio?130:200;
+}
+function openLedger(k,patient=null){
+ kind=k;
+ ledgerForm.reset();
+ $('ledgerTitle').textContent=k==='income'?'Lançar pagamento':'Lançar despesa';
+ $('paymentStudentLabel').classList.toggle('hidden',k==='expense');
+ $('paymentStudent').required=k==='income';
+ $('expenseCategoryLabel').classList.toggle('hidden',k==='income');
+ if(patient){
+  $('paymentStudent').value=patient.id;
+  if(patient.payment_method)ledgerForm.elements.method.value=patient.payment_method;
+  if(!ledgerForm.elements.method.value)ledgerForm.elements.method.value='Pix';
+  ledgerForm.elements.installments.value=patient.payment_installments||1;
+ }
+ ledgerForm.elements.paid_on.value=today;
+ updateLedgerFields();
+ $('ledgerDialog').showModal();
+}
+$('paymentStudent').onchange=updateLedgerFields;
+ledgerForm.elements.method.onchange=updateLedgerFields;
+document.addEventListener('click',event=>{
+ const button=event.target.closest('[data-patient-payment]');
+ if(!button||currentStaff()?.role!=='admin')return;
+ const patient=currentData().students.find(student=>student.id===button.dataset.patientPayment&&student.activity==='Fisioterapia');
+ if(patient)openLedger('income',patient);
+});
 $('newPayment').onclick=()=>openLedger('income');$('newExpense').onclick=()=>openLedger('expense');$('newTeam').onclick=()=>{$('teamForm').reset();$('teamForm').elements.username.readOnly=false;$('teamForm').elements.password.required=true;$('teamDialog').showModal();};$('newClinical').onclick=()=>{$('clinicalForm').elements.recorded_on.value=today;$('clinicalDialog').showModal();};
 async function submit(form,action,dialog,message){form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await action(Object.fromEntries(new FormData(form)));await load();if(dialog)$(dialog).close();form.reset();notify(message);}catch(e){notify(e.message);}finally{button.disabled=false;}};}
-submit($('ledgerForm'),d=>api('/rest/v1/ledger',{method:'POST',body:JSON.stringify({...d,kind,amount:Number(d.amount),student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category})}),'ledgerDialog','Lançamento registrado.');
+submit(ledgerForm,({physio_mode,physio_sessions,installments,...d})=>{
+ const detail=physio_mode?`Fisioterapia · ${physio_mode} · ${physio_sessions} sessão(ões)`:'';
+ const description=[detail,d.description.trim()].filter(Boolean).join(' · ');
+ return api('/rest/v1/ledger',{method:'POST',body:JSON.stringify({...d,description,kind,
+  amount:Number(d.amount),installments:Number(installments||1),
+  student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category})});
+},'ledgerDialog','Lançamento registrado.');
 submit($('teamForm'),async d=>{
  const existing=rows.team_members.find(r=>r.id===d.id);
  const id=await api('/rest/v1/rpc/edit_team',{method:'POST',body:JSON.stringify({p_id:d.id||null,p_name:d.name,p_email:existing?.email||crypto.randomUUID()+'@login.vitale.invalid',p_role:d.role,p_registration:d.registration||null})});

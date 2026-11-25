@@ -133,8 +133,9 @@ function render(){
  }
  $('appointments').innerHTML=data.appointments.filter(a=>day(a.starts_at)===$('date').value).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).map(a=>`<tr><td>${new Date(a.starts_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}</td><td><button class="secondary" data-view-student="${a.student_id}">${esc(name(a.student_id))}</button></td><td>${esc(a.activity)}</td><td>${esc(data.professionals.find(p=>p.user_id===a.professional_id)?.name||'Profissional')}</td><td>${esc({scheduled:'Agendado',present:'Presente',cancelled:'Cancelado',completed:'Concluído',absent:'Falta'}[a.status])}</td><td>${a.status==='scheduled'?`<button data-present="${a.id}">Confirmar presença</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum agendamento nesta data.</td></tr>';
  const studentTableHtml=data.students.filter(s=>s.activity!=='Fisioterapia'&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLocaleLowerCase('pt-BR').includes($('search').value.trim().toLocaleLowerCase('pt-BR'))&&s.student_code.toUpperCase().includes(($('studentCodeSearch').value||'').trim().toUpperCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})||a.id.localeCompare(b.id)).map(s=>`<tr><td><strong>${esc(s.student_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role==='admin'||(staff?.role==='professional'&&s.responsible_professional_id===staff.user_id)?`<button type="button" class="secondary" data-training-student="${s.id}">Ficha técnica</button>`:''} ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''} <button type="button" class="secondary" data-edit-weekdays="${s.id}">Dias da semana</button> ${staff?.role==='admin'?`<button type="button" class="secondary" data-archive-student="${s.id}" style="color:#a52828;border-color:#d6a6a6">Excluir</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
- const patientTableHtml=data.students.filter(s=>s.activity==='Fisioterapia'&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLocaleLowerCase('pt-BR').includes($('search').value.trim().toLocaleLowerCase('pt-BR'))&&s.student_code.toUpperCase().includes(($('studentCodeSearch').value||'').trim().toUpperCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(s=>`<tr><td><strong>${esc(s.student_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(data.professionals.find(p=>p.user_id===s.responsible_professional_id)?.name||'A definir')}</td><td>${esc(s.payment_method||'A definir')}${s.payment_installments>1?' · '+s.payment_installments+'x':''}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?'<button data-edit-student="'+s.id+'">Editar</button>':''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Nenhum paciente de fisioterapia cadastrado.</td></tr>';
+ const patientTableHtml=data.students.filter(s=>s.activity==='Fisioterapia'&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLocaleLowerCase('pt-BR').includes($('search').value.trim().toLocaleLowerCase('pt-BR'))&&s.student_code.toUpperCase().includes(($('studentCodeSearch').value||'').trim().toUpperCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(s=>`<tr><td><strong>${esc(s.student_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(data.professionals.find(p=>p.user_id===s.responsible_professional_id)?.name||'A definir')}</td><td>${esc(s.payment_method||'A definir')}${s.payment_installments>1?' · '+s.payment_installments+'x':''}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?'<button data-edit-student="'+s.id+'">Editar</button>':''} ${staff?.role==='admin'?`<button type="button" class="secondary" data-patient-payment="${esc(s.id)}">Lançar pagamento</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Nenhum paciente de fisioterapia cadastrado.</td></tr>';
  $('patientRows').innerHTML=patientTableHtml;
+ $('pilatesRoster').classList.toggle('hidden',$('patientsOnly').getAttribute('aria-pressed')==='true');
  if($('studentRows').innerHTML!==studentTableHtml)$('studentRows').innerHTML=studentTableHtml;
  $('attendanceRows').innerHTML=[...data.attendance].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map(a=>`<tr><td>${esc(name(a.student_id))}</td><td>${new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})}</td><td>${a.source==='facial'?'Facial':'Manual'}</td><td>${a.appointment_id?'Aula vinculada':'Conferir'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nenhuma presença.</td></tr>';
  $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
@@ -680,6 +681,20 @@ $('teacherClassForm').onsubmit=async e=>{
 $('classSearch').oninput=renderClasses;
 $('classStudentFilter').onchange=renderClasses;
 $('classProfessionalFilter').onchange=renderClasses;
+function filterFisioterapia(enabled){
+ const button=$('patientsOnly');
+ button.setAttribute('aria-pressed',String(enabled));
+ button.textContent=enabled?'Mostrar todos':'Somente fisioterapia';
+ $('pilatesRoster').classList.toggle('hidden',enabled);
+}
+$('patientsOnly').onclick=()=>filterFisioterapia($('patientsOnly').getAttribute('aria-pressed')!=='true');
+$('classPatients').onclick=()=>{
+ filterFisioterapia(true);
+ $('search').value='';
+ $('studentCodeSearch').value='';
+ document.querySelector('[data-view="students"]').click();
+ render();
+};
 $('classClearFilter').onclick=()=>{$('classSearch').value='';$('classStudentFilter').value='';$('classProfessionalFilter').value='';renderClasses();};
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-whatsapp-receipt]');if(!b)return;
