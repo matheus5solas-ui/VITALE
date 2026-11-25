@@ -837,28 +837,35 @@ document.addEventListener('click',e=>{
  '<fieldset style="display:grid;gap:12px;border:1px solid #d9e5df;border-radius:8px"><legend>Pagamento recebido</legend>'+
  '<label>Valor total (R$)<input name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" required value="'+esc(planPrice)+'"></label>'+
  '<label>Data do pagamento<input name="paid_on" type="date" required value="'+esc(paidToday)+'" max="'+esc(paidToday)+'"></label>'+
- '<label>Forma de pagamento<select name="method" required><option value="">Selecione</option><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Transferência</option><option>Boleto</option></select></label>'+
- '<label id="renewInstallments" class="hidden">Parcelas do cartão<input name="installments" type="number" min="1" max="24" step="1" value="1" disabled></label>'+
+ '<label>Parcelas, se pagar no cartão<input name="installments" type="number" min="1" max="24" step="1" value="1"></label>'+
  '<label><input name="already_recorded" type="checkbox" style="width:auto"> Pagamento já lançado no Financeiro</label>'+
- '<small>O pagamento será registrado no Financeiro ao confirmar, de acordo com os dados acima.</small></fieldset>':
+ '<small>Escolha a forma de pagamento para renovar e registrar o valor recebido.</small></fieldset>':
  '<p style="margin:0;font-size:13px;color:#586d63">O lançamento no Financeiro é feito pelo administrador.</p>')+
  '<p id="monthlyRenewError" role="alert" style="margin:0;color:#a32626" hidden></p>'+
- '<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap"><button type="button" class="secondary" id="monthlyRenewCancel">Cancelar</button><button type="submit" id="monthlyRenewSubmit">Confirmar renovação</button></div></form>';
+ '<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap"><button type="button" class="secondary" id="monthlyRenewCancel">Cancelar</button>'+
+ (canRecordPayment?['Cartão','Dinheiro','Pix'].map(method=>'<button type="submit" name="method" value="'+method+'">'+method+'</button>').join(''):'')+
+ '<button type="submit" id="monthlyRenewSubmit"'+(canRecordPayment?' class="hidden" disabled':'')+'>Confirmar renovação</button></div></form>';
  document.body.append(dialog);
  const form=dialog.querySelector('form'),startInput=form.elements.start,endInput=form.elements.end;
- if(canRecordPayment){
-  const {method,installments,amount,paid_on,already_recorded}=form.elements;
-  function syncPaymentFields(){
-   const record=!already_recorded.checked;
-   for(const input of [amount,paid_on,method])input.disabled=!record;
-   const card=record&&method.value==='Cartão';
-   installments.disabled=!card;
-   installments.required=card;
-   dialog.querySelector('#renewInstallments').classList.toggle('hidden',!card);
+ const submitButtons=Array.from(form.querySelectorAll('button[type="submit"]'));
+ const manualSubmit=dialog.querySelector('#monthlyRenewSubmit');
+ let saving=false;
+ function syncPaymentFields(){
+  if(!canRecordPayment){
+   manualSubmit.disabled=saving;
+   return;
   }
-  method.onchange=syncPaymentFields;
-  already_recorded.onchange=syncPaymentFields;
+  const {installments,amount,paid_on,already_recorded}=form.elements;
+  const record=!already_recorded.checked;
+  already_recorded.disabled=saving;
+  for(const input of [amount,paid_on,installments])input.disabled=!record||saving;
+  for(const button of submitButtons){
+   const visible=button===manualSubmit?!record:record;
+   button.classList.toggle('hidden',!visible);
+   button.disabled=!visible||saving;
+  }
  }
+ if(canRecordPayment)form.elements.already_recorded.onchange=syncPaymentFields;
  const error=dialog.querySelector('#monthlyRenewError');
  const showError=message=>{error.textContent=message;error.hidden=false;};
  const close=()=>dialog.close();
@@ -866,23 +873,27 @@ document.addEventListener('click',e=>{
  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
  startInput.addEventListener('change',()=>{if(!endInput.value||endInput.value<startInput.value)endInput.value=addCalendarDays(startInput.value,29);});
  form.onsubmit=async event=>{
-  event.preventDefault();error.hidden=true;
+  event.preventDefault();
+  if(saving)return;
+  error.hidden=true;
+  const recordPayment=canRecordPayment&&!form.elements.already_recorded.checked;
+  const method=event.submitter?.value;
+  if(recordPayment&&!['Pix','Dinheiro','Cartão'].includes(method))return showError('Escolha Cartão, Dinheiro ou Pix.');
   const start=startInput.value,end=endInput.value;
   if(!start||!end||end<start)return showError('Informe datas válidas. O vencimento deve ser igual ou posterior ao início.');
   const minimumEnd=addCalendarDays(start,29);
   if(end<minimumEnd)return showError(monthlyPackageDateMessage(minimumEnd));
   if(student.plan_expires_on&&start<=student.plan_expires_on&&!confirm('A nova vigência se sobrepõe ao pacote atual. Deseja continuar?'))return;
-  if(!confirm('Confirmar renovação de '+student.name+' de '+fmt(start)+' até '+fmt(end)+'?'))return;
-  const submit=dialog.querySelector('#monthlyRenewSubmit');submit.disabled=true;submit.textContent='Salvando...';
+  saving=true;
+  syncPaymentFields();
   try{
-   const recordPayment=canRecordPayment&&!form.elements.already_recorded.checked;
    if(recordPayment){
-    const {amount,paid_on,method,installments}=form.elements;
+    const {amount,paid_on,installments}=form.elements;
     await api('/rest/v1/rpc/renew_monthly_package_with_payment',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({
      p_student_id:student.id,p_plan:student.pilates_plan,
      p_previous_start:student.plan_started_on||null,p_previous_end:student.plan_expires_on||null,
      p_start:start,p_end:end,p_amount:Number(amount.value),p_paid_on:paid_on.value,
-     p_method:method.value,p_installments:installments.disabled?1:Number(installments.value)
+     p_method:method,p_installments:method==='Cartão'?Number(installments.value||1):1
     })});
    }else{
     const filter='/rest/v1/students?id=eq.'+student.id+'&plan_started_on='+(student.plan_started_on?'eq.'+student.plan_started_on:'is.null')+'&plan_expires_on='+(student.plan_expires_on?'eq.'+student.plan_expires_on:'is.null');
@@ -892,7 +903,7 @@ document.addEventListener('click',e=>{
    close();
    try{await reload();}catch{notify('Renovação salva. Recarregue a página para atualizar os dados.');return;}
    notify('Pacote renovado até '+fmt(end)+'. '+(recordPayment?'Pagamento registrado no Financeiro.':'Histórico preservado.'));
-  }catch(err){showError('Não foi possível renovar: '+(err.message||err));}finally{submit.disabled=false;submit.textContent='Confirmar renovação';}
+  }catch(err){showError('Não foi possível renovar: '+(err.message||err));}finally{saving=false;syncPaymentFields();}
  };
  dialog.showModal();
 });
