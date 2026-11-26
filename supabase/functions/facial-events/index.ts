@@ -1,3 +1,18 @@
+async function persistFaceEvent(url: string, headers: HeadersInit, event: unknown) {
+ const body = JSON.stringify(event);
+ for (let attempt = 0; ; attempt++) {
+  try {
+   const result = await fetch(url, {method:"POST",headers,body,signal:AbortSignal.timeout(3000)});
+   const retryable = result.status === 429 || [502,503,504].includes(result.status);
+   if (!retryable || attempt >= 1) return result;
+   await result.body?.cancel();
+  } catch (error) {
+   if (attempt >= 1) throw error;
+  }
+  await new Promise(resolve => setTimeout(resolve, 300));
+ }
+}
+
 Deno.serve(async(req)=>{
 const reply=(s,b)=>new Response(JSON.stringify(b),{status:s,headers:{"content-type":"application/json"}});
 if(req.method!=="POST")return reply(405,{error:"method"});
@@ -20,13 +35,14 @@ if(serial!==rows[0].device_serial||!/^\d{1,18}$/.test(String(v.id))||!/^[1-9]\d{
 events.push({p_serial:serial,p_log_id:String(v.id),p_user_id:String(v.user_id),p_occurred_at:new Date(t*1000).toISOString()});
 }
 const results=[];
-for(const e of events){const r=await fetch(base+"/rest/v1/rpc/record_face_event",{method:"POST",headers,body:JSON.stringify(e)});if(!r.ok){
+for(const e of events){const r=await persistFaceEvent(base+"/rest/v1/rpc/record_face_event",headers,e);if(!r.ok){
 const err=await r.json().catch(()=>({}));
 if(err.code==="P0001"&&["unknown facial user","inactive student"].includes(err.message)){
 const saved=await fetch(base+"/rest/v1/facial_unmatched_events?on_conflict=device_serial,log_id",{method:"POST",headers:{...headers,Prefer:"resolution=ignore-duplicates"},body:JSON.stringify({device_serial:e.p_serial,log_id:e.p_log_id,user_id:e.p_user_id,occurred_at:e.p_occurred_at,reason:err.message})});
 if(!saved.ok)return reply(502,{error:"pending event not persisted"});
 results.push({pending:true,reason:"binding_required",user_id:e.p_user_id});continue;
 }
+console.error("vitale_facial_write_failed",JSON.stringify({code:err.code,status:r.status}));
 return reply(502,{error:"not persisted"});
 }results.push(await r.json());}
 return reply(200,{accepted:events.length,results});
