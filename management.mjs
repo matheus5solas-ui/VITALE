@@ -1,5 +1,5 @@
 import {SUPABASE_URL,SUPABASE_KEY} from './config.mjs';
-import {api,esc,day,today,notify,allRows,currentStaff,currentData} from './cloud.mjs';
+import {api,esc,day,today,notify,allRows,currentStaff,currentData,isTestStudent} from './cloud.mjs';
 const $=id=>document.getElementById(id),money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const sendingInvites=new Set();
 const expenseCategories=Array.from($('ledgerForm').elements.category.options, option=>[option.value,option.text]);
@@ -56,11 +56,15 @@ function renderPhysioMonthlyHistory(data,role){
   (monthRows||'<tr><td colspan="3">Nenhum registro de fisioterapia disponível.</td></tr>')+'</tbody></table>';
 }
 function render(){const d=currentData(),role=currentStaff()?.role;
-renderPhysioMonthlyHistory(d,role);
+const testStudentIds=new Set(d.students.filter(isTestStudent).map(student=>student.id));
+renderPhysioMonthlyHistory({
+ ...d,students:d.students.filter(student=>!testStudentIds.has(student.id)),
+ appointments:d.appointments.filter(appointment=>!testStudentIds.has(appointment.student_id))
+},role);
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
 const activity=$('ledgerActivity').value;
 const matchingStudents=new Set(d.students.filter(student=>student.activity===activity).map(student=>student.id));
-const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&
+const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&!testStudentIds.has(r.student_id)&&
  (!activity||(r.kind==='income'&&matchingStudents.has(r.student_id))));
 $('costChart').classList.toggle('hidden',Boolean(activity)||role!=='admin');
 const total=(kind,status='received')=>list.filter(r=>r.kind===kind&&(r.settlement_status||'received')===status).reduce((sum,r)=>sum+Number(r.amount),0);
