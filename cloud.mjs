@@ -171,20 +171,49 @@ if(nameChanged){
 await api('/rest/v1/students'+(d.id?'?id=eq.'+encodeURIComponent(d.id):''),{method:d.id?'PATCH':'POST',body:JSON.stringify(body)});
 if(nameChanged)await api('/rest/v1/rpc/vitale_confirm_student_name_change',{method:'POST',body:JSON.stringify({p_student_id:d.id,p_expected_name:existing.name,p_new_name:d.name.trim(),p_confirmation:confirmation})});await reload();e.target.reset();e.target.elements.id.value='';e.target.dataset.mode='';$('studentDialog').close();notify(isCreate?'Aluno salvo no banco.':'Cadastro atualizado.');}catch(err){notify(err.message);}finally{button.disabled=false;}};
 $('appointmentForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.target));const start=new Date(`${d.day}T${d.time}:00-03:00`);await api('/rest/v1/appointments',{method:'POST',body:JSON.stringify({student_id:d.studentId,professional_id:d.professional,starts_at:start.toISOString(),ends_at:new Date(+start+3600000).toISOString(),activity:d.activity})});await reload();e.target.reset();$('appointmentDialog').close();notify('Agendamento salvo.');}catch(err){notify(err.message);}};
+const weeklyReasonDialog=document.createElement('dialog');
+weeklyReasonDialog.innerHTML='<form style="display:grid;gap:12px"><h3>Desconsiderar falta semanal</h3>'+
+ '<label>Motivo<textarea name="reason" required maxlength="500" rows="3"></textarea></label>'+
+ '<small>A justificativa vale para as faltas deste resumo semanal.</small>'+
+ '<div class="toolbar"><button type="submit">Salvar justificativa</button> <button type="button" class="secondary">Cancelar</button></div></form>';
+document.body.append(weeklyReasonDialog);
+weeklyReasonDialog.querySelector('button[type="button"]').onclick=()=>weeklyReasonDialog.close();
+const weeklyReviews=new Set();
 document.addEventListener('click',async e=>{
- const btn=e.target.closest('[data-absence-action]');if(!btn)return;
+ const btn=e.target.closest('[data-absence-action]');if(!btn||weeklyReasonDialog.open)return;
  const action=btn.dataset.absenceAction,studentId=btn.dataset.absenceStudent,weekStart=btn.dataset.absenceWeek;
- let note='';
- if(action==='excused'){
-  const week=(data.pilates_weekly_absences||[]).find(w=>w.student_id===studentId&&w.week_start===weekStart);
-  note=prompt('Informe o motivo para desconsiderar a falta da semana. Ex.: feriado, sem aula. Caso haja mais de uma falta, a justificativa vale para todas da semana.',week?.notes||'')?.trim()||'';
-  if(!note)return;
- }
- else if(!confirm('Confirmar as faltas desta semana para '+name(studentId)+'?'))return;
- btn.disabled=true;
- try{await api('/rest/v1/rpc/vitale_review_weekly_absence',{method:'POST',body:JSON.stringify({p_student_id:studentId,p_week_start:weekStart,p_action:action,p_note:note||null})});await reload();notify(action==='excused'?'Falta desconsiderada com justificativa.':'Falta confirmada pelo profissional.');}
- catch(error){notify(error.message||'Não foi possível revisar a falta.');}
- finally{btn.disabled=false;}
+ const key=studentId+'|'+weekStart;
+ if(weeklyReviews.has(key))return;
+ weeklyReviews.add(key);
+ try{
+  let note=null;
+  if(action==='excused'){
+   const week=(data.pilates_weekly_absences||[]).find(w=>w.student_id===studentId&&w.week_start===weekStart);
+   const form=weeklyReasonDialog.querySelector('form');
+   const reason=form.elements.reason;
+   reason.value=week?.notes||'';
+   reason.setCustomValidity('');
+   reason.oninput=()=>reason.setCustomValidity('');
+   note=await new Promise(resolve=>{
+    let submitted=null;
+    form.onsubmit=event=>{
+     event.preventDefault();
+     const value=reason.value.trim();
+     if(!value){reason.setCustomValidity('Informe o motivo.');reason.reportValidity();return;}
+     submitted=value;
+     weeklyReasonDialog.close();
+    };
+    weeklyReasonDialog.addEventListener('close',()=>resolve(submitted),{once:true});
+    weeklyReasonDialog.showModal();
+   });
+   if(!note)return;
+  }else if(!confirm('Confirmar as faltas desta semana para '+name(studentId)+'?'))return;
+  btn.disabled=true;
+  await api('/rest/v1/rpc/vitale_review_weekly_absence',{method:'POST',body:JSON.stringify({p_student_id:studentId,p_week_start:weekStart,p_action:action,p_note:note})});
+  await reload();
+  notify(action==='excused'?'Falta desconsiderada com justificativa.':'Falta confirmada pelo profissional.');
+ }catch(error){notify(error.message||'Não foi possível revisar a falta.');}
+ finally{weeklyReviews.delete(key);btn.disabled=false;}
 });
 document.addEventListener('click',async e=>{
  const btn=e.target.closest('[data-archive-student]');if(!btn)return;
