@@ -124,43 +124,72 @@ $('faceLinkForm').addEventListener('submit',async e=>{
 });
 
 
-const agendaTime = new Intl.DateTimeFormat('pt-BR', {
- timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-});
 const agendaWeekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-const agendaShifts = [['07:00', '11:00'], ['15:00', '17:00'], ['18:00', '19:00']];
+const pilatesShifts = {morning:'Manhã', afternoon:'Tarde', evening:'Noite'};
 
-function renderWeeklyAgenda(activeStudents){
- const selectedDate = $('date').value;
- if(!selectedDate){
-  $('agendaWeek').textContent = 'Selecione uma data para ver a semana.';
-  $('agendaShiftRows').replaceChildren();
-  return;
- }
- const monday = new Date(selectedDate+'T00:00:00Z');
- monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
- const dates = agendaWeekdays.map((_, index)=>{
-  const date = new Date(monday);
-  date.setUTCDate(date.getUTCDate()+index);
-  return date.toISOString().slice(0,10);
- });
- const groups = new Map(dates.map(date=>[date, agendaShifts.map(()=>new Set())]));
- const studentIds = new Set(activeStudents.filter(s=>s.activity==='Pilates').map(s=>s.id));
- for(const appointment of data.appointments){
-  if(appointment.activity!=='Pilates'||appointment.status==='cancelled'||!studentIds.has(appointment.student_id))continue;
-  const counts = groups.get(day(appointment.starts_at));
-  if(!counts)continue;
-  const time = agendaTime.format(new Date(appointment.starts_at));
-  const shift = agendaShifts.findIndex(([start,end])=>time>=start&&time<=end);
-  if(shift>=0)counts[shift].add(appointment.student_id);
- }
- const brazilianDate = date=>date.split('-').reverse().join('/');
- $('agendaWeek').textContent = brazilianDate(dates[0])+' a '+brazilianDate(dates[6]);
- $('agendaShiftRows').innerHTML = dates.map((date,index)=>
-  '<tr><th scope="row">'+agendaWeekdays[index]+' · '+brazilianDate(date).slice(0,5)+'</th>'+
-  groups.get(date).map(students=>'<td>'+students.size+'</td>').join('')+'</tr>'
+function renderPilatesAgenda(students){
+ const picker = $('pilatesShiftStudent');
+ const selected = picker.value;
+ picker.innerHTML = '<option value="">Selecione um aluno</option>'+students.map(student=>
+  '<option value="'+esc(student.id)+'">'+esc(student.name)+'</option>'
  ).join('');
+ picker.value = selected;
+ $('pilatesShiftRows').innerHTML = agendaWeekdays.map((weekday,index)=>
+  '<tr><th scope="row">'+weekday+'</th>'+Object.keys(pilatesShifts).map(shift=>{
+   const names = students.filter(student=>student.pilates_weekly_shifts?.[index]===shift);
+   if(!names.length)return '<td>0</td>';
+   return '<td><details><summary>'+names.length+'</summary><ul>'+names.map(student=>
+    '<li>'+esc(student.name)+'</li>').join('')+'</ul></details></td>';
+  }).join('')+'</tr>'
+ ).join('');
+ const missing = students.filter(student=>!student.pilates_weekly_shifts?.some(Boolean)).length;
+ $('pilatesShiftCoverage').textContent = missing
+  ? missing+' de '+students.length+' alunos sem turno cadastrado.'
+  : students.length+' alunos com turno cadastrado.';
 }
+
+function showAgenda(kind){
+ const pilates = kind==='pilates';
+ $('pilatesAgenda').classList.toggle('hidden',!pilates);
+ $('physioAgenda').classList.toggle('hidden',pilates);
+ $('showPilatesAgenda').setAttribute('aria-pressed',pilates);
+ $('showPhysioAgenda').setAttribute('aria-pressed',!pilates);
+}
+$('showPilatesAgenda').onclick=()=>showAgenda('pilates');
+$('showPhysioAgenda').onclick=()=>showAgenda('physio');
+$('editPilatesShifts').onclick=()=>{
+ const student = data.students.find(s=>s.id===$('pilatesShiftStudent').value);
+ if(!student)return notify('Selecione um aluno de Pilates.');
+ $('pilatesShiftTitle').textContent = 'Turnos habituais · '+student.name;
+ const form = $('pilatesShiftForm');
+ form.dataset.studentId=student.id;
+ $('pilatesShiftDays').innerHTML = agendaWeekdays.map((weekday,index)=>
+  '<label>'+weekday+'<select name="shift"><option value="">Sem turno</option>'+
+  Object.entries(pilatesShifts).map(([value,label])=>'<option value="'+value+'"'+
+   (student.pilates_weekly_shifts?.[index]===value?' selected':'')+'>'+label+'</option>').join('')+
+  '</select></label>'
+ ).join('');
+ $('pilatesShiftMessage').textContent='';
+ $('pilatesShiftDialog').showModal();
+};
+$('pilatesShiftForm').onsubmit=async event=>{
+ event.preventDefault();
+ const form=event.target, button=form.querySelector('[type="submit"]');
+ const id=form.dataset.studentId;
+ const shifts=new FormData(form).getAll('shift');
+ button.disabled=true;
+ try{
+  const rows=await api('/rest/v1/students?id=eq.'+encodeURIComponent(id)+'&activity=eq.Pilates&active=eq.true',
+   {method:'PATCH',body:JSON.stringify({pilates_weekly_shifts:shifts})});
+  if(rows?.length!==1)throw Error('Não foi possível salvar os turnos deste aluno.');
+  const student=data.students.find(s=>s.id===id);
+  if(student)student.pilates_weekly_shifts=rows[0].pilates_weekly_shifts;
+  render();
+  $('pilatesShiftDialog').close();
+  notify('Turnos de Pilates atualizados.');
+ }catch(error){$('pilatesShiftMessage').textContent=error.message;}
+ finally{button.disabled=false;}
+};
 
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
@@ -168,9 +197,10 @@ function render(){
  const activeStudents=data.students.filter(s=>s.active&&!isTestStudent(s));
  $('countStudents').textContent=activeStudents.filter(s=>s.activity==='Pilates').length;
  $('countPhysioPatients').textContent=activeStudents.filter(s=>s.activity==='Fisioterapia').length;
- $('countAppointments').textContent=data.appointments.filter(a=>!testStudentIds.has(a.student_id)&&day(a.starts_at)===today).length;
+ $('countAppointments').textContent=data.appointments.filter(a=>a.activity==='Fisioterapia'&&a.status!=='cancelled'&&!testStudentIds.has(a.student_id)&&day(a.starts_at)===today).length;
  $('countAttendance').textContent=data.attendance.filter(a=>!testStudentIds.has(a.student_id)&&day(a.occurred_at)===today).length;
- renderWeeklyAgenda(activeStudents);
+ renderPilatesAgenda(activeStudents.filter(s=>s.activity==='Pilates'&&
+  (staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
  const absenceSummary=$('weeklyAbsenceSummary');
  if(absenceSummary){
   const rows=(data.pilates_weekly_absences||[]).filter(w=>w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
@@ -181,21 +211,21 @@ function render(){
   const pending=(data.pilates_weekly_absences||[]).filter(w=>w.status==='pending_review'&&w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id))).sort((a,b)=>b.week_start.localeCompare(a.week_start));
   absenceBox.innerHTML='<h3>Frequência semanal · '+pending.length+' pendência(s) para conferir</h3>'+(pending.length?pending.map(w=>'<div class="card" style="margin:8px 0;padding:14px"><strong>'+esc(name(w.student_id))+'</strong> · semana '+esc(w.week_start)+' a '+esc(w.week_end)+'<p>'+w.attended_classes+' de '+w.expected_classes+' aula(s) · '+w.missing_classes+' possível(is) falta(s). Confira os dias combinados e reposições antes de confirmar.</p><button type="button" data-absence-action="reviewed" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Confirmar falta</button> <button type="button" class="secondary" data-absence-action="excused" data-absence-student="'+w.student_id+'" data-absence-week="'+w.week_start+'">Desconsiderar / justificar</button></div>').join(''):'<p>Nenhuma frequência pendente de conferência.</p>');
  }
- $('appointments').innerHTML=data.appointments.filter(a=>day(a.starts_at)===$('date').value).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).map(a=>`<tr><td>${new Date(a.starts_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}</td><td><button class="secondary" data-view-student="${a.student_id}">${esc(name(a.student_id))}</button></td><td>${esc(a.activity)}</td><td>${esc(data.professionals.find(p=>p.user_id===a.professional_id)?.name||'Profissional')}</td><td>${esc({scheduled:'Agendado',present:'Presente',cancelled:'Cancelado',completed:'Concluído',absent:'Falta'}[a.status])}</td><td>${a.status==='scheduled'?`<button data-present="${a.id}">Confirmar presença</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum agendamento nesta data.</td></tr>';
+ $('appointments').innerHTML=data.appointments.filter(a=>a.activity==='Fisioterapia'&&day(a.starts_at)===$('date').value).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).map(a=>`<tr><td>${new Date(a.starts_at).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}</td><td><button class="secondary" data-view-student="${a.student_id}">${esc(name(a.student_id))}</button></td><td>${esc(a.activity)}</td><td>${esc(data.professionals.find(p=>p.user_id===a.professional_id)?.name||'Profissional')}</td><td>${esc({scheduled:'Agendado',present:'Presente',cancelled:'Cancelado',completed:'Concluído',absent:'Falta'}[a.status])}</td><td>${a.status==='scheduled'?`<button data-present="${a.id}">Confirmar presença</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum agendamento nesta data.</td></tr>';
  const studentTableHtml=data.students.filter(s=>s.activity!=='Fisioterapia'&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLocaleLowerCase('pt-BR').includes($('search').value.trim().toLocaleLowerCase('pt-BR'))&&s.student_code.toUpperCase().includes(($('studentCodeSearch').value||'').trim().toUpperCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})||a.id.localeCompare(b.id)).map(s=>`<tr><td><strong>${esc(s.student_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(s.activity)}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role==='admin'||(staff?.role==='professional'&&s.responsible_professional_id===staff.user_id)?`<button type="button" class="secondary" data-training-student="${s.id}">Ficha técnica</button>`:''} ${staff?.role!=='professional'?`<button data-edit-student="${s.id}">Editar</button>`:''} <button type="button" class="secondary" data-edit-weekdays="${s.id}">Dias da semana</button> ${staff?.role==='admin'?`<button type="button" class="secondary" data-archive-student="${s.id}" style="color:#a52828;border-color:#d6a6a6">Excluir</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhum aluno disponível para seu perfil.</td></tr>';
  const patientTableHtml=data.students.filter(s=>s.activity==='Fisioterapia'&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)&&s.name.toLocaleLowerCase('pt-BR').includes($('search').value.trim().toLocaleLowerCase('pt-BR'))&&s.student_code.toUpperCase().includes(($('studentCodeSearch').value||'').trim().toUpperCase())).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(s=>`<tr><td><strong>${esc(s.student_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td>${studentAge(s.birth_date)}</td><td>${esc(data.professionals.find(p=>p.user_id===s.responsible_professional_id)?.name||'A definir')}</td><td>${esc(s.payment_method||'A definir')}${s.payment_installments>1?' · '+s.payment_installments+'x':''}</td><td><button class="secondary" data-view-student="${s.id}">Ver informações</button> ${staff?.role!=='professional'?'<button data-edit-student="'+s.id+'">Editar</button>':''} ${staff?.role==='admin'?`<button type="button" class="secondary" data-patient-payment="${esc(s.id)}">Lançar pagamento</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Nenhum paciente de fisioterapia cadastrado.</td></tr>';
  $('patientRows').innerHTML=patientTableHtml;
  $('pilatesRoster').classList.toggle('hidden',$('patientsOnly').getAttribute('aria-pressed')==='true');
  if($('studentRows').innerHTML!==studentTableHtml)$('studentRows').innerHTML=studentTableHtml;
  $('attendanceRows').innerHTML=[...data.attendance].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map(a=>`<tr><td>${esc(name(a.student_id))}</td><td>${new Date(a.occurred_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})}</td><td>${a.source==='facial'?'Facial':'Manual'}</td><td>${a.appointment_id?'Aula vinculada':'Conferir'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nenhuma presença.</td></tr>';
- $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+ $('appointmentStudent').innerHTML='<option value="">Selecione</option>'+data.students.filter(s=>s.active&&s.activity==='Fisioterapia'&&!isTestStudent(s)).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
  $('professional').innerHTML='<option value="">Selecione</option>'+data.professionals.filter(p=>p.active).map(p=>`<option value="${p.user_id}">${esc(p.name)}</option>`).join('');
  $('appointmentStudent').value=selectedStudent;$('professional').value=selectedProfessional;renderClasses();renderFacialRoster();
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.roles&&!b.dataset.roles.split(',').includes(staff?.role))return;try{sessionStorage.setItem(viewKey,b.dataset.view);}catch{}if(b.dataset.view==='classes')renderClasses();document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['agenda','classes','students','attendance','face','finance','team','clinical','partners'].forEach(id=>$(id).classList.toggle('hidden',id!==b.dataset.view&&!(id==='attendance'&&b.dataset.view==='classes')));$('title').textContent=b.textContent;});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newStudent').onclick=()=>{openStudent(null,'Pilates');};$('newPatient').onclick=()=>{openStudent(null,'Fisioterapia');};
-$('newAppointment').onclick=()=>{if(!data.students.length)return notify('Cadastre um aluno primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');$('appointmentForm').elements.day.value=$('date').value;$('appointmentDialog').showModal();};
+$('newAppointment').onclick=()=>{if(!data.students.some(s=>s.active&&s.activity==='Fisioterapia'&&!isTestStudent(s)))return notify('Cadastre um paciente de fisioterapia primeiro.');if(!data.professionals.some(p=>p.active))return notify('Cadastre os profissionais autorizados antes de agendar.');document.querySelector('[data-view=agenda]').click();showAgenda('physio');$('appointmentForm').elements.day.value=$('date').value||today;$('appointmentDialog').showModal();};
 $('studentForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(e.target));const isCreate=e.target.dataset.mode==='create';if(isCreate&&d.id)throw Error('Cadastro novo contém identificador anterior. Feche e abra novamente. Nenhum dado foi alterado.');if(!isCreate&&!d.id)throw Error('Identificador do aluno não encontrado. Nenhum dado foi alterado.');if(!d.name.trim())throw Error('Informe o nome.');if(d.activity==='Pilates'&&d.pilates_plan?.startsWith('monthly_')&&!d.plan_started_on)throw Error('Informe o início do pacote mensal.');if(d.physio_first_visit_on>day(new Date()))throw Error('Informe uma data de atendimento que já aconteceu.');if(d.activity==='Pilates'&&d.plan_expires_on&&d.plan_started_on&&d.plan_expires_on<d.plan_started_on)throw Error('O vencimento não pode ser anterior ao início.');if(d.activity==='Fisioterapia'&&(!d.responsible_professional_id||Number(d.payment_installments)<1||Number(d.payment_installments)>24))throw Error('Selecione o profissional e confira as parcelas previstas.');if(d.birth_date&&(d.birth_date>day(new Date())||d.birth_date<'1900-01-01'))throw Error('Confira a data de nascimento.');const body={name:d.name.trim(),phone:d.phone.trim()||null,activity:d.activity,birth_date:d.birth_date||null,address:d.address.trim()||null,health_conditions:d.health_conditions.trim()||null,pilates_plan:d.activity==='Pilates'?(d.pilates_plan||null):null,pilates_reason:d.activity==='Pilates'?(d.pilates_reason.trim()||null):null,responsible_professional_id:d.responsible_professional_id||null,plan_started_on:d.activity==='Pilates'?(d.plan_started_on||null):null,plan_expires_on:d.activity==='Pilates'?(d.plan_expires_on||null):null,payment_method:d.activity==='Fisioterapia'?(d.payment_method||null):null,payment_installments:d.activity==='Fisioterapia'?(Number(d.payment_installments)||1):null,payment_notes:d.activity==='Fisioterapia'?(d.payment_notes?.trim()||null):null,physio_first_visit_on:d.activity==='Fisioterapia'?(d.physio_first_visit_on||null):null};const existing=d.id?data.students.find(x=>x.id===d.id):null;
 if(monthlyLessonLimit[body.pilates_plan]&&body.plan_expires_on&&
  ['activity','pilates_plan','plan_started_on','plan_expires_on'].some(key=>existing?.[key]!==body[key])){
@@ -214,7 +244,7 @@ if(nameChanged){
 }
 await api('/rest/v1/students'+(d.id?'?id=eq.'+encodeURIComponent(d.id):''),{method:d.id?'PATCH':'POST',body:JSON.stringify(body)});
 if(nameChanged)await api('/rest/v1/rpc/vitale_confirm_student_name_change',{method:'POST',body:JSON.stringify({p_student_id:d.id,p_expected_name:existing.name,p_new_name:d.name.trim(),p_confirmation:confirmation})});await reload();e.target.reset();e.target.elements.id.value='';e.target.dataset.mode='';$('studentDialog').close();notify(isCreate?'Aluno salvo no banco.':'Cadastro atualizado.');}catch(err){notify(err.message);}finally{button.disabled=false;}};
-$('appointmentForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.target));const start=new Date(`${d.day}T${d.time}:00-03:00`);await api('/rest/v1/appointments',{method:'POST',body:JSON.stringify({student_id:d.studentId,professional_id:d.professional,starts_at:start.toISOString(),ends_at:new Date(+start+3600000).toISOString(),activity:d.activity})});await reload();e.target.reset();$('appointmentDialog').close();notify('Agendamento salvo.');}catch(err){notify(err.message);}};
+$('appointmentForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.target));const start=new Date(`${d.day}T${d.time}:00-03:00`);await api('/rest/v1/appointments',{method:'POST',body:JSON.stringify({student_id:d.studentId,professional_id:d.professional,starts_at:start.toISOString(),ends_at:new Date(+start+3600000).toISOString(),activity:'Fisioterapia'})});await reload();e.target.reset();$('appointmentDialog').close();notify('Agendamento salvo.');}catch(err){notify(err.message);}};
 const weeklyReasonDialog=document.createElement('dialog');
 weeklyReasonDialog.innerHTML='<form style="display:grid;gap:12px"><h3>Desconsiderar falta semanal</h3>'+
  '<label>Motivo<textarea name="reason" required maxlength="500" rows="3"></textarea></label>'+
