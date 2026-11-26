@@ -124,6 +124,44 @@ $('faceLinkForm').addEventListener('submit',async e=>{
 });
 
 
+const agendaTime = new Intl.DateTimeFormat('pt-BR', {
+ timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+});
+const agendaWeekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const agendaShifts = [['07:00', '11:00'], ['15:00', '17:00'], ['18:00', '19:00']];
+
+function renderWeeklyAgenda(activeStudents){
+ const selectedDate = $('date').value;
+ if(!selectedDate){
+  $('agendaWeek').textContent = 'Selecione uma data para ver a semana.';
+  $('agendaShiftRows').replaceChildren();
+  return;
+ }
+ const monday = new Date(selectedDate+'T00:00:00Z');
+ monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
+ const dates = agendaWeekdays.map((_, index)=>{
+  const date = new Date(monday);
+  date.setUTCDate(date.getUTCDate()+index);
+  return date.toISOString().slice(0,10);
+ });
+ const groups = new Map(dates.map(date=>[date, agendaShifts.map(()=>new Set())]));
+ const studentIds = new Set(activeStudents.filter(s=>s.activity==='Pilates').map(s=>s.id));
+ for(const appointment of data.appointments){
+  if(appointment.activity!=='Pilates'||appointment.status==='cancelled'||!studentIds.has(appointment.student_id))continue;
+  const counts = groups.get(day(appointment.starts_at));
+  if(!counts)continue;
+  const time = agendaTime.format(new Date(appointment.starts_at));
+  const shift = agendaShifts.findIndex(([start,end])=>time>=start&&time<=end);
+  if(shift>=0)counts[shift].add(appointment.student_id);
+ }
+ const brazilianDate = date=>date.split('-').reverse().join('/');
+ $('agendaWeek').textContent = brazilianDate(dates[0])+' a '+brazilianDate(dates[6]);
+ $('agendaShiftRows').innerHTML = dates.map((date,index)=>
+  '<tr><th scope="row">'+agendaWeekdays[index]+' · '+brazilianDate(date).slice(0,5)+'</th>'+
+  groups.get(date).map(students=>'<td>'+students.size+'</td>').join('')+'</tr>'
+ ).join('');
+}
+
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
  const testStudentIds=new Set(data.students.filter(isTestStudent).map(s=>s.id));
@@ -132,6 +170,7 @@ function render(){
  $('countPhysioPatients').textContent=activeStudents.filter(s=>s.activity==='Fisioterapia').length;
  $('countAppointments').textContent=data.appointments.filter(a=>!testStudentIds.has(a.student_id)&&day(a.starts_at)===today).length;
  $('countAttendance').textContent=data.attendance.filter(a=>!testStudentIds.has(a.student_id)&&day(a.occurred_at)===today).length;
+ renderWeeklyAgenda(activeStudents);
  const absenceSummary=$('weeklyAbsenceSummary');
  if(absenceSummary){
   const rows=(data.pilates_weekly_absences||[]).filter(w=>w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
