@@ -126,7 +126,12 @@ $('faceLinkForm').addEventListener('submit',async e=>{
 
 function render(){
  const selectedStudent=$('appointmentStudent').value,selectedProfessional=$('professional').value;
- $('countStudents').textContent=data.students.filter(s=>s.active&&s.activity==='Pilates').length;$('countPhysioPatients').textContent=data.students.filter(s=>s.active&&s.activity==='Fisioterapia').length;$('countAppointments').textContent=data.appointments.filter(a=>day(a.starts_at)===today).length;$('countAttendance').textContent=data.attendance.filter(a=>day(a.occurred_at)===today).length;
+ const testStudentIds=new Set(data.students.filter(isTestStudent).map(s=>s.id));
+ const activeStudents=data.students.filter(s=>s.active&&!isTestStudent(s));
+ $('countStudents').textContent=activeStudents.filter(s=>s.activity==='Pilates').length;
+ $('countPhysioPatients').textContent=activeStudents.filter(s=>s.activity==='Fisioterapia').length;
+ $('countAppointments').textContent=data.appointments.filter(a=>!testStudentIds.has(a.student_id)&&day(a.starts_at)===today).length;
+ $('countAttendance').textContent=data.attendance.filter(a=>!testStudentIds.has(a.student_id)&&day(a.occurred_at)===today).length;
  const absenceSummary=$('weeklyAbsenceSummary');
  if(absenceSummary){
   const rows=(data.pilates_weekly_absences||[]).filter(w=>w.missing_classes>0&&data.students.some(s=>s.id===w.student_id&&s.active&&(staff?.role!=='professional'||s.responsible_professional_id===session?.user?.id)));
@@ -244,6 +249,7 @@ function applyRoles(){document.querySelectorAll('[data-roles]').forEach(el=>el.c
 export {api,esc,day,today,notify,reload,allRows};
 export const currentStaff=()=>staff;
 export const currentData=()=>data;
+export const isTestStudent=student=>student.student_code==='VT-28472R';
 import('./management.mjs');
 import('./training.mjs');
 window.addEventListener('vitale:team',()=>reload().catch(e=>notify(e.message)));
@@ -601,12 +607,13 @@ function renderClasses(){
  const selectedProfessionalId=canFilterProfessional?professionalFilter.value:'';
  if(canFilterProfessional){
   const assigned=new Map();
-  data.students.filter(s=>s.active&&s.activity==='Pilates').forEach(s=>{if(s.responsible_professional_id)assigned.set(s.responsible_professional_id,(assigned.get(s.responsible_professional_id)||0)+1);});
+  data.students.filter(s=>s.active&&s.activity==='Pilates'&&!isTestStudent(s)).forEach(s=>{if(s.responsible_professional_id)assigned.set(s.responsible_professional_id,(assigned.get(s.responsible_professional_id)||0)+1);});
   const professionals=data.professionals.filter(p=>p.user_id).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   professionalFilter.innerHTML='<option value="">Todos os profissionais</option>'+professionals.map(p=>'<option value="'+esc(p.user_id)+'">'+esc(p.name)+' ('+(assigned.get(p.user_id)||0)+')</option>').join('')+(Array.from(assigned.keys()).some(id=>!professionals.some(p=>p.user_id===id))?'<option value="__unknown__">Profissional não listado</option>':'');
   professionalFilter.value=selectedProfessionalId&&Array.from(professionalFilter.options).some(o=>o.value===selectedProfessionalId)?selectedProfessionalId:'';
   const id=professionalFilter.value;
-  const total=id?eligible.filter(s=>id==='__unknown__'?s.responsible_professional_id&&!professionals.some(p=>p.user_id===s.responsible_professional_id):s.responsible_professional_id===id).length:eligible.length;
+  const countable=eligible.filter(s=>!isTestStudent(s));
+  const total=id?countable.filter(s=>id==='__unknown__'?s.responsible_professional_id&&!professionals.some(p=>p.user_id===s.responsible_professional_id):s.responsible_professional_id===id).length:countable.length;
   $('classProfessionalCount').textContent=total+' aluno(s) de Pilates '+(id?'com o profissional selecionado':'ativo(s) no total');
  }
  const filteredByProfessional=canFilterProfessional&&professionalFilter.value?eligible.filter(s=>professionalFilter.value==='__unknown__'?s.responsible_professional_id&&!data.professionals.some(p=>p.user_id===s.responsible_professional_id):s.responsible_professional_id===professionalFilter.value):eligible;
