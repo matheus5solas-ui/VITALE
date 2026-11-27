@@ -191,13 +191,17 @@ function openLedger(k,patient=null,expense=null){
  $('paymentStudent').required=k==='income';
  $('expenseCategoryLabel').classList.toggle('hidden',k==='income');
  if(patient){
-  $('paymentStudent').value=patient.id;
+  const picker=$('paymentStudent');
+  if(![...picker.options].some(option=>option.value===patient.id)){
+   picker.add(new Option(patient.name,patient.id));
+  }
+  picker.value=patient.id;
   if(patient.payment_method)ledgerForm.elements.method.value=patient.payment_method;
   if(!ledgerForm.elements.method.value)ledgerForm.elements.method.value='Pix';
   ledgerForm.elements.installments.value=patient.payment_installments||1;
  }
  ledgerForm.elements.paid_on.value=day(new Date());
- ledgerForm.elements.competence_month.value=$('financeMonth').value||day(new Date()).slice(0,7);
+ ledgerForm.elements.competence_month.value=(!patient&&$('financeMonth').value)||day(new Date()).slice(0,7);
  if(expense){
   $('ledgerTitle').textContent='Registrar pagamento da despesa';
   for(const key of ['description','amount','category','method','settlement_due_on'])ledgerForm.elements[key].value=expense[key]||'';
@@ -217,10 +221,12 @@ document.addEventListener('click',event=>{
  if(expense)openLedger('expense',null,expense);
 });
 document.addEventListener('click',event=>{
- const button=event.target.closest('[data-patient-payment]');
+ const button=event.target.closest('[data-student-payment]');
  if(!button||currentStaff()?.role!=='admin')return;
- const patient=currentData().students.find(student=>student.id===button.dataset.patientPayment&&student.activity==='Fisioterapia');
- if(patient)openLedger('income',patient);
+ const patient=currentData().students.find(student=>student.id===button.dataset.studentPayment&&student.active);
+ if(!patient)return;
+ button.closest('dialog')?.close();
+ openLedger('income',patient);
 });
 $('newPayment').onclick=()=>openLedger('income');$('newExpense').onclick=()=>openLedger('expense');$('newTeam').onclick=()=>{$('teamForm').reset();$('teamForm').elements.username.readOnly=false;$('teamForm').elements.password.required=true;$('teamDialog').showModal();};$('newClinical').onclick=()=>{$('clinicalForm').elements.recorded_on.value=today;$('clinicalDialog').showModal();};
 async function submit(form,action,dialog,message){form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await action(Object.fromEntries(new FormData(form)));await load();if(dialog)$(dialog).close();form.reset();notify(message);}catch(e){notify(e.message);}finally{button.disabled=false;}};}
