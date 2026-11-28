@@ -61,6 +61,37 @@ function renderPhysioMonthlyHistory(data,role){
   '<table><thead><tr><th>Mês</th><th>Pacientes atendidos</th><th>Pacientes com pagamento</th></tr></thead><tbody>'+
   (monthRows||'<tr><td colspan="3">Nenhum registro de fisioterapia disponível.</td></tr>')+'</tbody></table>';
 }
+function renderRevenueBreakdown(entries, students){
+ const panel=$('revenueBreakdown');
+ const activities=new Map(students.map(student=>[student.id,student.activity]));
+ const totals=new Map([
+  ['Pilates',0],['Fisioterapia',0],
+  ...Array.from(otherIncomeCategories.keys(),category=>[category,0])
+ ]);
+ let total=0;
+ for(const entry of entries){
+  if(entry.kind!=='income'||(entry.settlement_status||'received')!=='received')continue;
+  const activity=activities.get(entry.student_id);
+  const source=otherIncomeCategories.has(entry.category)?entry.category:
+   activity==='Pilates'||activity==='Fisioterapia'?activity:'unclassified';
+  const cents=Math.round(Number(entry.amount)*100);
+  totals.set(source,(totals.get(source)||0)+cents);
+  total+=cents;
+ }
+ const title='<h3>Receitas por origem</h3>';
+ if(!total){panel.innerHTML=title+'<p>Nenhum recebimento na competência selecionada.</p>';return;}
+ const labels=new Map([
+  ['Pilates','Alunos de Pilates'],['Fisioterapia','Pacientes de fisioterapia'],
+  ...otherIncomeCategories,['unclassified','Receitas sem origem identificada']
+ ]);
+ const percent=new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1});
+ const lines=Array.from(totals,([source,cents])=>
+  '<tr><th scope="row">'+esc(labels.get(source))+'</th><td>'+money(cents/100)+
+  '</td><td>'+percent.format(cents/total)+'</td></tr>').join('');
+ panel.innerHTML=title+'<table><thead><tr><th scope="col">Origem</th><th scope="col">Recebido</th>'+
+  '<th scope="col">% do mês</th></tr></thead><tbody>'+lines+'</tbody><tfoot><tr>'+
+  '<th scope="row">Total recebido</th><td><strong>'+money(total/100)+'</strong></td><td>100%</td></tr></tfoot></table>';
+}
 function render(){const d=currentData(),role=currentStaff()?.role;
 const testStudentIds=new Set(d.students.filter(isTestStudent).map(student=>student.id));
 renderPhysioMonthlyHistory({
@@ -71,8 +102,9 @@ const options='<option value="">Selecione</option>'+d.students.map(s=>`<option v
 const activity=$('ledgerActivity').value;
 const otherIncome=otherIncomeCategories.has(activity);
 const matchingStudents=new Set(d.students.filter(student=>student.activity===activity).map(student=>student.id));
-const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&!testStudentIds.has(r.student_id)&&
- (!activity||(r.kind==='income'&&(otherIncome?r.category===activity:matchingStudents.has(r.student_id)))));
+const monthEntries=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&!testStudentIds.has(r.student_id));
+renderRevenueBreakdown(monthEntries,d.students);
+const list=monthEntries.filter(r=>!activity||(r.kind==='income'&&(otherIncome?r.category===activity:matchingStudents.has(r.student_id))));
 $('costChart').classList.toggle('hidden',Boolean(activity)||role!=='admin');
 const total=(kind,status='received')=>list.filter(r=>r.kind===kind&&(r.settlement_status||'received')===status).reduce((sum,r)=>sum+Number(r.amount),0);
 $('financeSummary').innerHTML=`<div class="card">Recebimentos${activity?' de '+esc(otherIncomeCategories.get(activity)??activity):''}<b>${money(total('income'))}</b></div>`+(role==='admin'&&!activity?`<div class="card">Despesas pagas<b>${money(total('expense'))}</b></div><div class="card">Despesas em aberto<b>${money(total('expense','pending'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
