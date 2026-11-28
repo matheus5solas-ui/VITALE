@@ -3,7 +3,13 @@ import {api,esc,day,today,notify,allRows,currentStaff,currentData,isTestStudent}
 const $=id=>document.getElementById(id),money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const sendingInvites=new Set();
 const expenseCategories=Array.from($('ledgerForm').elements.category.options, option=>[option.value,option.text]);
-const categoryLabels=new Map([['pagamento','Pagamento'],...expenseCategories]);
+const incomeCategory=$('ledgerForm').elements.income_category;
+const otherIncomeCategories=new Map(Array.from(incomeCategory.options)
+ .filter(option=>option.value!=='pagamento').map(option=>[option.value,option.text]));
+for(const [value,label] of otherIncomeCategories){
+ $('ledgerRevenueFilters').append(new Option(label,value));
+}
+const categoryLabels=new Map([['pagamento','Pagamento'],...expenseCategories,...otherIncomeCategories]);
 let rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]},kind='income',loadVersion=0,settlingExpense=null;
 $('financeMonth').value=today.slice(0,7);
 async function load(){const version=++loadVersion,role=currentStaff()?.role;if(!role){rows={ledger:[],team_members:[],clinical_records:[],partner_connections:[]};return;}
@@ -63,12 +69,13 @@ renderPhysioMonthlyHistory({
 },role);
 const options='<option value="">Selecione</option>'+d.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');$('paymentStudent').innerHTML=options;$('clinicalStudent').innerHTML=options;
 const activity=$('ledgerActivity').value;
+const otherIncome=otherIncomeCategories.has(activity);
 const matchingStudents=new Set(d.students.filter(student=>student.activity===activity).map(student=>student.id));
 const list=rows.ledger.filter(r=>(r.competence_month||r.paid_on).startsWith($('financeMonth').value)&&r.settlement_status!=='cancelled'&&!testStudentIds.has(r.student_id)&&
- (!activity||(r.kind==='income'&&matchingStudents.has(r.student_id))));
+ (!activity||(r.kind==='income'&&(otherIncome?r.category===activity:matchingStudents.has(r.student_id)))));
 $('costChart').classList.toggle('hidden',Boolean(activity)||role!=='admin');
 const total=(kind,status='received')=>list.filter(r=>r.kind===kind&&(r.settlement_status||'received')===status).reduce((sum,r)=>sum+Number(r.amount),0);
-$('financeSummary').innerHTML=`<div class="card">Recebimentos${activity?' de '+esc(activity):''}<b>${money(total('income'))}</b></div>`+(role==='admin'&&!activity?`<div class="card">Despesas pagas<b>${money(total('expense'))}</b></div><div class="card">Despesas em aberto<b>${money(total('expense','pending'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
+$('financeSummary').innerHTML=`<div class="card">Recebimentos${activity?' de '+esc(otherIncomeCategories.get(activity)??activity):''}<b>${money(total('income'))}</b></div>`+(role==='admin'&&!activity?`<div class="card">Despesas pagas<b>${money(total('expense'))}</b></div><div class="card">Despesas em aberto<b>${money(total('expense','pending'))}</b></div><div class="card">Saldo do mês<b>${money(total('income')-total('expense'))}</b></div>`:'');
 const costs=expenseCategories.map(([c,label])=>({label,total:list.filter(r=>r.kind==='expense'&&r.category===c).reduce((v,r)=>v+Number(r.amount),0)})),max=Math.max(1,...costs.map(c=>c.total));
 $('costChart').innerHTML='<h3>Custos por categoria</h3><p><small>Inclui despesas pagas e em aberto na competência selecionada.</small></p>'+costs.map(c=>`<div class="chart-row"><span>${esc(c.label)}</span><div class="chart-track"><div class="chart-bar" style="width:${c.total/max*100}%" role="img" aria-label="${esc(c.label)}: ${money(c.total)}"></div></div><strong>${money(c.total)}</strong></div>`).join('');
 const name=id=>d.students.find(s=>s.id===id)?.name||'—';
@@ -97,7 +104,7 @@ function renderLedger(entries,students,role){
  });
  ledgerPage=Math.min(ledgerPage,Math.max(0,Math.ceil(matching.length/ledgerPageSize)-1));
  const offset=ledgerPage*ledgerPageSize;
- const columns=expense?['Data','Descrição','Categoria','Valor']:['Data','Aluno / paciente','Descrição','Valor'];
+ const columns=expense?['Data','Descrição','Categoria','Valor']:['Data','Origem','Descrição','Valor'];
  $('ledgerHead').innerHTML='<tr>'+columns.map(label=>'<th scope="col">'+label+'</th>').join('')+'</tr>';
  $('ledgerRows').innerHTML=matching.slice(offset,offset+ledgerPageSize).map(r=>{
   const pending=r.settlement_status==='pending';
@@ -107,7 +114,7 @@ function renderLedger(entries,students,role){
   const description='<td>'+esc(r.description)+'<br><small>'+status+'</small>'+competence+'</td>';
   const person=names.get(r.student_id);
   const detail=expense?description+'<td>'+esc(categoryLabels.get(r.category)??r.category)+'</td>':
-   '<td>'+esc(person?.name||'—')+(person?.activity?'<br><small>'+esc(person.activity)+'</small>':'')+'</td>'+description;
+   '<td>'+esc(otherIncomeCategories.get(r.category)||person?.name||'—')+(person?.activity?'<br><small>'+esc(person.activity)+'</small>':'')+'</td>'+description;
   const settle=role==='admin'&&expense&&pending?
    '<br><button type="button" class="secondary" data-settle-expense="'+esc(r.id)+'">Registrar pagamento</button>':'';
   return '<tr><td>'+(expense&&pending?'Vence em ':'')+formatDate(date(r))+'</td>'+detail+
@@ -126,7 +133,7 @@ function selectLedger(kind){
   $(id).classList.toggle('secondary',!active);
  }
  $('ledgerSearch').value='';
- $('ledgerSearch').placeholder=expense?'Buscar despesa ou categoria':'Buscar aluno, paciente ou pagamento';
+ $('ledgerSearch').placeholder=expense?'Buscar despesa ou categoria':'Buscar aluno, paciente, categoria ou descrição';
  render();
 }
 $('expenseLedgerTab').onclick=()=>selectLedger('expense');
@@ -155,7 +162,11 @@ document.addEventListener('click',event=>{const button=event.target.closest('[da
 $('financeMonth').onchange=()=>{ledgerPage=0;render();};
 const ledgerForm=$('ledgerForm');
 function updateLedgerFields(){
- const patient=currentData().students.find(student=>student.id===$('paymentStudent').value);
+ const linkedPayment=kind==='income'&&incomeCategory.value==='pagamento';
+ $('paymentStudentLabel').classList.toggle('hidden',!linkedPayment);
+ $('paymentStudent').disabled=!linkedPayment;
+ $('paymentStudent').required=linkedPayment;
+ const patient=linkedPayment&&currentData().students.find(student=>student.id===$('paymentStudent').value);
  const physio=kind==='income'&&patient?.activity==='Fisioterapia';
  const card=kind==='income'&&ledgerForm.elements.method.value==='Cartão';
  for(const [label,field,visible] of [
@@ -186,9 +197,9 @@ function openLedger(k,patient=null,expense=null){
  kind=k;
  settlingExpense=expense;
  ledgerForm.reset();
- $('ledgerTitle').textContent=k==='income'?'Lançar pagamento':'Lançar despesa';
- $('paymentStudentLabel').classList.toggle('hidden',k==='expense');
- $('paymentStudent').required=k==='income';
+ $('ledgerTitle').textContent=k==='income'?(patient?'Lançar pagamento':'Lançar receita'):'Lançar despesa';
+ $('incomeCategoryLabel').classList.toggle('hidden',k==='expense'||Boolean(patient));
+ incomeCategory.disabled=k==='expense';
  $('expenseCategoryLabel').classList.toggle('hidden',k==='income');
  if(patient){
   const picker=$('paymentStudent');
@@ -212,6 +223,7 @@ function openLedger(k,patient=null,expense=null){
  $('ledgerDialog').showModal();
 }
 $('paymentStudent').onchange=updateLedgerFields;
+incomeCategory.onchange=updateLedgerFields;
 ledgerForm.elements.method.onchange=updateLedgerFields;
 ledgerForm.elements.settlement_status.onchange=updateLedgerFields;
 document.addEventListener('click',event=>{
@@ -223,18 +235,22 @@ document.addEventListener('click',event=>{
 document.addEventListener('click',event=>{
  const button=event.target.closest('[data-student-payment]');
  if(!button||currentStaff()?.role!=='admin')return;
- const patient=currentData().students.find(student=>student.id===button.dataset.studentPayment&&student.active);
+ const linkedPayment=kind==='income'&&incomeCategory.value==='pagamento';
+ $('paymentStudentLabel').classList.toggle('hidden',!linkedPayment);
+ $('paymentStudent').disabled=!linkedPayment;
+ $('paymentStudent').required=linkedPayment;
+ const patient=linkedPayment&&currentData().students.find(student=>student.id===button.dataset.studentPayment&&student.active);
  if(!patient)return;
  button.closest('dialog')?.close();
  openLedger('income',patient);
 });
 $('newPayment').onclick=()=>openLedger('income');$('newExpense').onclick=()=>openLedger('expense');$('newTeam').onclick=()=>{$('teamForm').reset();$('teamForm').elements.username.readOnly=false;$('teamForm').elements.password.required=true;$('teamDialog').showModal();};$('newClinical').onclick=()=>{$('clinicalForm').elements.recorded_on.value=today;$('clinicalDialog').showModal();};
 async function submit(form,action,dialog,message){form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await action(Object.fromEntries(new FormData(form)));await load();if(dialog)$(dialog).close();form.reset();notify(message);}catch(e){notify(e.message);}finally{button.disabled=false;}};}
-submit(ledgerForm,async ({physio_mode,physio_sessions,installments,competence_month,settlement_due_on,settlement_status,...d})=>{
+submit(ledgerForm,async ({income_category,physio_mode,physio_sessions,installments,competence_month,settlement_due_on,settlement_status,...d})=>{
  const detail=physio_mode?`Fisioterapia · ${physio_mode} · ${physio_sessions} sessão(ões)`:'';
  const description=[detail,d.description.trim()].filter(Boolean).join(' · ');
  const payload={...d,description,kind,amount:Number(d.amount),installments:Number(installments||1),
-  student_id:kind==='income'?d.student_id:null,category:kind==='income'?'pagamento':d.category,competence_month:competence_month+'-01'};
+  student_id:kind==='income'&&income_category==='pagamento'?d.student_id:null,category:kind==='income'?income_category:d.category,competence_month:competence_month+'-01'};
  if(kind==='expense'){
   Object.assign(payload,{settlement_due_on:settlement_due_on||null,settlement_status,
    paid_on:settlement_status==='pending'?settlement_due_on:d.paid_on,
